@@ -1,520 +1,79 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Hnefatafl (11×11) — 16 защитников | Multiplayer</title>
-  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      background: #1a1a1a;
-      color: #eee;
-      text-align: center;
-      margin: 20px;
-    }
-    h1 { margin: 0.4em; color: #ffcc00; }
-    #status {
-      font-size: 1.4em;
-      margin: 15px;
-      min-height: 1.8em;
-      font-weight: bold;
-      color: #88ff88;
-    }
-    #board {
-      display: grid;
-      grid-template-columns: repeat(11, 52px);
-      grid-template-rows: repeat(11, 52px);
-      gap: 3px;
-      margin: 20px auto;
-      width: fit-content;
-      background: #333;
-      padding: 12px;
-      border-radius: 15px;
-      box-shadow: 0 0 40px rgba(0,0,0,0.8);
-    }
-    .cell {
-      width: 52px;
-      height: 52px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 30px;
-      cursor: pointer;
-      border-radius: 8px;
-      transition: all 0.15s;
-      position: relative;
-    }
-    .light { background: #e8d5b8; }
-    .dark  { background: #b38b67; }
-    .throne { background: #555 !important; }
-    .escape { background: #444 !important; box-shadow: inset 0 0 15px #ffaa00; }
-    .selected { box-shadow: 0 0 0 5px #ff8800 inset !important; }
-    .possible {
-      box-shadow: 0 0 0 5px #22ff44 inset !important;
-      background: rgba(80, 255, 100, 0.35) !important;
-    }
-    .piece {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 26px;
-      user-select: none;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.6);
-    }
-    .defender { background: #1e4a8c; color: white; border: 3px solid #88bbff; }
-    .attacker { background: #9c1f1f; color: white; border: 3px solid #ff7777; }
-    .king {
-      background: linear-gradient(#f0d070, #c09030);
-      color: #222;
-      font-size: 34px;
-      border: 4px solid #ffeb3b;
-    }
-    button {
-      padding: 12px 28px;
-      font-size: 1.2em;
-      margin: 10px;
-      background: #ff8800;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    button:hover { background: #ffaa33; }
-    #multiplayerPanel {
-      margin: 20px auto;
-      max-width: 600px;
-    }
-    #roomInfo {
-      margin-top: 12px;
-      font-size: 1.15em;
-      line-height: 1.5;
-    }
-  </style>
-</head>
-<body>
-
-<h1>Hnefatafl (11×11) — 16 защитников</h1>
-<div id="status">Нажмите «Новая игра» или создайте/присоединитесь к комнате</div>
-<div id="board"></div>
-
-<div id="multiplayerPanel">
-  <button onclick="startNewGameSingle()">Новая игра (одиночная)</button>
-  <button onclick="createRoom()">Создать комнату (я — защитники)</button>
-  <button onclick="joinRoomPrompt()">Присоединиться по ID</button>
-  <div id="roomInfo"></div>
-</div>
-
-<script>
-// ====================== HNEFATAFL — 16 ЗАЩИТНИКОВ + MULTIPLAYER ======================
-const SIZE = 11;
-let board = [];
-let selected = null;
-let currentPlayer = 1; // 1 = защитники (DEF), 2 = нападающие (ATT)
-let gameOver = false;
-let gameStarted = false;
-
-const DEF = 1;
-const ATT = 2;
-const KING = 3;
-
-const statusEl = document.getElementById("status");
-const roomInfoEl = document.getElementById("roomInfo");
-
-// === Multiplayer vars ===
-let peer = null;
-let conn = null;
-let isHost = false;
-let myPeerId = null;
-
-function initEmptyBoard() {
-  board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
-  board[5][5] = "throne";
-  [[0,0],[0,10],[10,0],[10,10]].forEach(([r,c]) => board[r][c] = "escape");
-}
-
-function initFullBoard() {
-  // Защитники — 16 штук + король
-  [[5,3],[5,4],[5,6],[5,7],
-   [3,5],[4,5],[6,5],[7,5],
-   [4,4],[4,6],[6,4],[6,6]].forEach(([r,c]) => board[r][c] = DEF);
-
-  board[5][5] = KING;
-
-  // Нападающие
-  for (let i = 3; i <= 7; i++) {
-    board[0][i] = board[10][i] = ATT;
-    board[i][0] = board[i][10] = ATT;
-  }
-  board[1][5] = board[9][5] = ATT;
-  board[5][1] = board[5][9] = ATT;
-}
-
-function getCellClass(r, c) {
-  if (board[r][c] === "throne") return "cell throne";
-  if (board[r][c] === "escape") return "cell escape";
-  return (r + c) % 2 === 0 ? "cell light" : "cell dark";
-}
-
-function getPieceHTML(val) {
-  if (val === DEF) return '<div class="piece defender">D</div>';
-  if (val === ATT) return '<div class="piece attacker">A</div>';
-  if (val === KING) return '<div class="piece king">♔</div>';
-  return '';
-}
-
-function render() {
-  const boardEl = document.getElementById("board");
-  boardEl.innerHTML = '';
-
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      const cell = document.createElement("div");
-      cell.className = getCellClass(r, c);
-      cell.dataset.row = r;
-      cell.dataset.col = c;
-      cell.innerHTML = getPieceHTML(board[r][c]);
-      cell.addEventListener("click", handleClick);
-      boardEl.appendChild(cell);
-    }
-  }
-
-  if (selected) highlightMoves();
-  updateStatus();
-}
-
-function startNewGameSingle() {
-  selected = null;
-  currentPlayer = DEF;
-  gameOver = false;
-  gameStarted = true;
-
-  if (conn) {
-    conn.close();
-    conn = null;
-    roomInfoEl.innerHTML = "";
-  }
-
-  initEmptyBoard();
-  initFullBoard();
-  render();
-
-  statusEl.innerHTML = "Одиночная игра — ход защитников (синие)";
-}
-
-function createRoom() {
-  if (peer) peer.destroy();
-  peer = new Peer();
-  isHost = true;
-
-  peer.on('open', id => {
-    myPeerId = id;
-    const link = `${window.location.origin}${window.location.pathname}?join=${id}`;
-    roomInfoEl.innerHTML = 
-      `Комната создана!<br>` +
-      `Твой ID: <b style="color:#ff0">${id}</b><br>` +
-      `Отправь другу этот ID или <a href="${link}" target="_blank" style="color:#0f0">эту ссылку</a>`;
-    
-    startNewGameSingle();  // сразу стартуем как хозяин
-    currentPlayer = DEF;
-    render();
-  });
-
-  peer.on('connection', incomingConn => {
-    if (conn) incomingConn.close(); // только одно соединение
-    conn = incomingConn;
-    setupConnection();
-  });
-
-  peer.on('error', err => {
-    console.error(err);
-    roomInfoEl.innerHTML += `<br><span style="color:#f44">Ошибка: ${err.type || err}</span>`;
-  });
-}
-
-function joinRoomPrompt() {
-  const id = prompt("Введи ID комнаты:");
-  if (!id?.trim()) return;
-  joinRoom(id.trim());
-}
-
-function joinRoom(id) {
-  if (peer) peer.destroy();
-  peer = new Peer();
-  isHost = false;
-
-  peer.on('open', () => {
-    conn = peer.connect(id, { reliable: true });
-    setupConnection();
-  });
-
-  peer.on('error', err => {
-    console.error(err);
-    alert("Ошибка подключения: " + (err.type || err));
-  });
-}
-
-function setupConnection() {
-  conn.on('open', () => {
-    roomInfoEl.innerHTML = `Подключено! Играем ${isHost ? 'за защитников (синие)' : 'за нападающих (красные)'}`;
-    
-    if (!isHost) {
-      conn.send({ type: 'requestInit' });
-    }
-  });
-
-  conn.on('data', handleRemoteData);
-
-  conn.on('close', () => {
-    roomInfoEl.innerHTML += `<br><span style="color:#fa0">Соединение разорвано</span>`;
-    conn = null;
-  });
-
-  conn.on('error', err => console.error("Connection error:", err));
-}
-
-function handleRemoteData(data) {
-  if (data.type === 'init') {
-    board = data.board;
-    currentPlayer = data.currentPlayer;
-    gameOver = !!data.gameOver;
-    selected = null;
-    gameStarted = true;
-    render();
-  }
-  else if (data.type === 'move') {
-    const {fromR, fromC, toR, toC} = data;
-    if (!gameOver && isValidMove(fromR, fromC, toR, toC)) {
-      makeMove(fromR, fromC, toR, toC);
-      render();
-    }
-  }
-  else if (data.type === 'requestInit') {
-    if (conn && conn.open) {
-      conn.send({
-        type: 'init',
-        board: JSON.parse(JSON.stringify(board)),
-        currentPlayer,
-        gameOver
-      });
-    }
-  }
-}
-
-function startNewGame() { /* оставляем для совместимости, но теперь лучше использовать startNewGameSingle */ }
-
-function handleClick(e) {
-  if (gameOver || !gameStarted) return;
-
-  // В мультиплеере ход только своей стороне
-  if (conn && conn.open) {
-    const mySide = isHost ? DEF : ATT;
-    if (currentPlayer !== mySide) {
-      statusEl.textContent = "Ожидайте хода противника...";
-      return;
-    }
-  }
-
-  const row = parseInt(e.currentTarget.dataset.row);
-  const col = parseInt(e.currentTarget.dataset.col);
-  const piece = board[row][col];
-
-  if ((piece === currentPlayer) || (piece === KING && currentPlayer === DEF)) {
-    selected = [row, col];
-    render();
-    return;
-  }
-
-  if (selected) {
-    const [fromRow, fromCol] = selected;
-    if (isValidMove(fromRow, fromCol, row, col)) {
-      makeMove(fromRow, fromCol, row, col);
-      selected = null;
-      render();
-    } else {
-      selected = null;
-      render();
-    }
-  }
-}
-
-function isValidMove(fromR, fromC, toR, toC) {
-  if (fromR === toR && fromC === toC) return false;
-  if (!isStraightLine(fromR, fromC, toR, toC)) return false;
-  if (!isPathEmpty(fromR, fromC, toR, toC)) return false;
-
-  const target = board[toR][toC];
-  if (target !== 0 && typeof target !== "string") return false;
-
-  if ((target === "throne" || target === "escape") && board[fromR][fromC] !== KING) {
-    return false;
-  }
-  return true;
-}
-
-function isStraightLine(r1,c1,r2,c2) {
-  return r1 === r2 || c1 === c2;
-}
-
-function isPathEmpty(r1,c1,r2,c2) {
-  const dr = Math.sign(r2 - r1);
-  const dc = Math.sign(c2 - c1);
-  let r = r1 + dr, c = c1 + dc;
-  while (r !== r2 || c !== c2) {
-    if (board[r][c] !== 0 && typeof board[r][c] !== "string") return false;
-    r += dr; c += dc;
-  }
-  return true;
-}
-
-function highlightMoves() {
-  if (!selected) return;
-  const [r, c] = selected;
-  const moves = getPossibleMoves(r, c);
-  moves.forEach(([tr, tc]) => {
-    const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
-    if (cell) cell.classList.add("possible");
-  });
-}
-
-function getPossibleMoves(row, col) {
-  const moves = [];
-  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-  for (let [dr, dc] of dirs) {
-    let r = row + dr;
-    let c = col + dc;
-    while (r >= 0 && r < SIZE && c >= 0 && c < SIZE) {
-      if (!isValidMove(row, col, r, c)) break;
-      moves.push([r, c]);
-      r += dr; c += dc;
-    }
-  }
-  return moves;
-}
-
-function performCaptures(row, col) {
-  const mover = board[row][col];
-  const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
-
-  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-
-  for (let [dr, dc] of dirs) {
-    const midR = row + dr;
-    const midC = col + dc;
-    const endR = row + dr * 2;
-    const endC = col + dc * 2;
-
-    if (midR < 0 || midR >= SIZE || midC < 0 || midC >= SIZE) continue;
-    if (endR < 0 || endR >= SIZE || endC < 0 || endC >= SIZE) continue;
-
-    const midPiece = board[midR][midC];
-    const endPiece = board[endR][endC];
-
-    const isClosingValid = (endPiece === mover || 
-                            endPiece === KING || 
-                            endPiece === "throne" || 
-                            endPiece === "escape");
-
-    if ((midPiece === opponent || midPiece === KING) && isClosingValid) {
-      if (midPiece !== KING) {
-        board[midR][midC] = 0;
-      }
-    }
-  }
-}
-
-function makeMove(fromR, fromC, toR, toC) {
-  board[toR][toC] = board[fromR][fromC];
-  board[fromR][fromC] = 0;
-
-  performCaptures(toR, toC);
-  checkWinConditions();
-
-  currentPlayer = (currentPlayer === DEF) ? ATT : DEF;
-
-  // Отправляем ход оппоненту
-  if (conn && conn.open) {
-    conn.send({
-      type: 'move',
-      fromR, fromC, toR, toC
-    });
-  }
-}
-
-function checkWinConditions() {
-  // Побег короля в угол
-  for (let [r, c] of [[0,0],[0,10],[10,0],[10,10]]) {
-    if (board[r][c] === KING) {
-      gameOver = true;
-      statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
-      return;
-    }
-  }
-
-  // Поиск короля
-  let kingR = -1, kingC = -1;
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      if (board[r][c] === KING) { kingR = r; kingC = c; }
-    }
-  }
-
-  if (kingR === -1) {
-    gameOver = true;
-    statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
-    return;
-  }
-
-  // Захват на троне 4-мя нападающими
-  if (kingR === 5 && kingC === 5) {
-    let attackersAround = 0;
-    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-    for (let [dr, dc] of dirs) {
-      const r = 5 + dr, c = 5 + dc;
-      if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r][c] === ATT) {
-        attackersAround++;
-      }
-    }
-    if (attackersAround >= 4) {
-      gameOver = true;
-      statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен на троне`;
-    }
-  }
-}
-
-function updateStatus() {
+function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
   if (gameOver) return;
-  if (!gameStarted) {
-    statusEl.textContent = "Выберите режим игры";
+
+  // Находим исходную ячейку и фигуру
+  const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
+  const piece = fromCell?.querySelector('.piece');
+  if (!piece || !fromCell) {
+    // fallback
+    board[toR][toC] = board[fromR][fromC];
+    board[fromR][fromC] = 0;
+    performCaptures(toR, toC);
+    checkWinConditions();
+    currentPlayer = currentPlayer === DEF ? ATT : DEF;
+    if (shouldSend && conn?.open) conn.send({type: 'move', fromR, fromC, toR, toC});
+    render();
     return;
   }
 
-  let text = currentPlayer === DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
+  // Создаём клон для анимации
+  const clone = piece.cloneNode(true);
+  clone.style.position = 'absolute';
+  clone.style.zIndex = '50';
+  clone.style.pointerEvents = 'none';
+  clone.style.transition = 'transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.6s ease';
 
-  if (conn && conn.open) {
-    text += ` — ${isHost ? 'ТВОЙ' : 'противника'}`;
-  }
+  // Позиционируем клон точно над исходной фигурой
+  const boardRect = document.getElementById('board').getBoundingClientRect();
+  const fromRect = fromCell.getBoundingClientRect();
 
-  statusEl.textContent = text;
+  clone.style.left = (fromRect.left - boardRect.left) + 'px';
+  clone.style.top  = (fromRect.top  - boardRect.top)  + 'px';
+  clone.style.width  = fromRect.width + 'px';
+  clone.style.height = fromRect.height + 'px';
+
+  document.getElementById('board').appendChild(clone);
+
+  // Скрываем оригинал, чтобы не двоилось
+  piece.style.opacity = '0';
+
+  // Находим целевую ячейку
+  const toCell = document.querySelector(`[data-row="${toR}"][data-col="${toC}"]`);
+  const toRect = toCell.getBoundingClientRect();
+
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top  - fromRect.top;
+
+  // Запускаем анимацию (requestAnimationFrame помогает увидеть начальное состояние)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {  // двойной raf — часто решает проблему "анимация не стартует"
+      clone.style.transform = `translate(${dx}px, ${dy}px)`;
+      clone.style.opacity = '1';
+    });
+  });
+
+  // Когда анимация закончится
+  const finishMove = () => {
+    clone.remove();
+    piece.style.opacity = '';
+
+    board[toR][toC] = board[fromR][fromC];
+    board[fromR][fromC] = 0;
+    performCaptures(toR, toC);
+    checkWinConditions();
+    currentPlayer = currentPlayer === DEF ? ATT : DEF;
+
+    if (shouldSend && conn?.open) {
+      conn.send({type: 'move', fromR, fromC, toR, toC});
+    }
+
+    render();
+  };
+
+  clone.addEventListener('transitionend', finishMove, {once: true});
+
+  // Страховка на 900 мс
+  setTimeout(() => {
+    if (clone.parentNode) finishMove();
+  }, 900);
 }
-
-window.onload = () => {
-  initEmptyBoard();
-  render();
-
-  // Автоприсоединение по ссылке ?join=XXXXX
-  const urlParams = new URLSearchParams(window.location.search);
-  const joinId = urlParams.get('join');
-  if (joinId) {
-    setTimeout(() => {
-      joinRoom(joinId);
-    }, 600);
-  }
-};
-</script>
-</body>
-</html>
