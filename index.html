@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Hnefatafl (11×11) — Онлайн</title>
+  <title>Hnefatafl (11×11) — 16 защитников | Multiplayer</title>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <style>
     body {
@@ -15,10 +15,11 @@
     }
     h1 { margin: 0.4em; color: #ffcc00; }
     #status {
-      font-size: 1.5em;
+      font-size: 1.4em;
       margin: 15px;
       min-height: 1.8em;
       font-weight: bold;
+      color: #88ff88;
     }
     #board {
       display: grid;
@@ -42,6 +43,7 @@
       cursor: pointer;
       border-radius: 8px;
       transition: all 0.15s;
+      position: relative;
     }
     .light { background: #e8d5b8; }
     .dark  { background: #b38b67; }
@@ -65,7 +67,7 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.6);
     }
     .defender { background: #1e4a8c; color: white; border: 3px solid #88bbff; }
-    .attacker  { background: #9c1f1f; color: white; border: 3px solid #ff7777; }
+    .attacker { background: #9c1f1f; color: white; border: 3px solid #ff7777; }
     .king {
       background: linear-gradient(#f0d070, #c09030);
       color: #222;
@@ -75,7 +77,7 @@
     button {
       padding: 12px 28px;
       font-size: 1.2em;
-      margin: 8px 4px;
+      margin: 10px;
       background: #ff8800;
       color: white;
       border: none;
@@ -83,104 +85,67 @@
       cursor: pointer;
     }
     button:hover { background: #ffaa33; }
-    #multiplayer-controls {
-      margin: 20px 0;
-      padding: 15px;
-      background: #222;
-      border-radius: 12px;
-      border: 1px solid #444;
+    #multiplayerPanel {
+      margin: 20px auto;
+      max-width: 600px;
     }
-    #myPeerId {
-      font-family: monospace;
-      font-size: 1.1em;
-      color: #88ff88;
-      margin: 12px 0;
+    #roomInfo {
+      margin-top: 12px;
+      font-size: 1.15em;
+      line-height: 1.5;
     }
-    input {
-      padding: 10px;
-      font-size: 1.1em;
-      width: 220px;
-      margin: 8px;
-    }
-
-    /* Окно передачи хода (для hot-seat) */
-    .overlay {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.9);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 200;
-    }
-    .overlay-content {
-      background: #222;
-      padding: 40px 60px;
-      border-radius: 15px;
-      text-align: center;
-      border: 4px solid #ff8800;
-      max-width: 90%;
-    }
-    .overlay-content h2 { color: #ffcc00; margin: 0 0 20px 0; }
   </style>
 </head>
 <body>
 
-<h1>Hnefatafl (11×11) — Онлайн / Два игрока</h1>
-<div id="status">Ход защитников (синие)</div>
+<h1>Hnefatafl (11×11) — 16 защитников</h1>
+<div id="status">Нажмите «Новая игра» или создайте/присоединитесь к комнате</div>
 <div id="board"></div>
 
-<div id="multiplayer-controls">
+<div id="multiplayerPanel">
+  <button onclick="startNewGameSingle()">Новая игра (одиночная)</button>
   <button onclick="createRoom()">Создать комнату (я — защитники)</button>
-  <button onclick="joinRoom()">Присоединиться к игре</button>
-  <br>
-  <input id="roomIdInput" placeholder="Введи ID комнаты" />
-  <p id="myPeerId"></p>
-</div>
-
-<button onclick="resetGame()">Новая игра (локальная)</button>
-
-<div id="overlay" class="overlay">
-  <div class="overlay-content">
-    <h2 id="overlayTitle">Передача устройства</h2>
-    <p id="overlayText" style="font-size:1.4em; line-height:1.4;"></p>
-    <button onclick="continueGame()" style="margin-top:25px;">Готово → следующий игрок</button>
-  </div>
+  <button onclick="joinRoomPrompt()">Присоединиться по ID</button>
+  <div id="roomInfo"></div>
 </div>
 
 <script>
-// ====================== HNEFATAFL + PEERJS ======================
+// ====================== HNEFATAFL — 16 ЗАЩИТНИКОВ + MULTIPLAYER ======================
 const SIZE = 11;
 let board = [];
 let selected = null;
-let currentPlayer = 1; // 1 = DEF (синие), 2 = ATT (красные)
+let currentPlayer = 1; // 1 = защитники (DEF), 2 = нападающие (ATT)
 let gameOver = false;
+let gameStarted = false;
 
 const DEF = 1;
 const ATT = 2;
 const KING = 3;
 
+const statusEl = document.getElementById("status");
+const roomInfoEl = document.getElementById("roomInfo");
+
+// === Multiplayer vars ===
 let peer = null;
 let conn = null;
-let myPlayer = null;          // 1 или 2 — за кого играю Я
 let isHost = false;
+let myPeerId = null;
 
-const statusEl = document.getElementById("status");
-const overlay = document.getElementById("overlay");
-const overlayTitle = document.getElementById("overlayTitle");
-const overlayText = document.getElementById("overlayText");
-const peerIdEl = document.getElementById("myPeerId");
-
-function initBoard() {
+function initEmptyBoard() {
   board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
   board[5][5] = "throne";
   [[0,0],[0,10],[10,0],[10,10]].forEach(([r,c]) => board[r][c] = "escape");
+}
 
-  // Защитники — 12 штук + король
-  [[5,3],[5,4],[5,6],[5,7],[3,5],[4,5],[6,5],[7,5],
+function initFullBoard() {
+  // Защитники — 16 штук + король
+  [[5,3],[5,4],[5,6],[5,7],
+   [3,5],[4,5],[6,5],[7,5],
    [4,4],[4,6],[6,4],[6,6]].forEach(([r,c]) => board[r][c] = DEF);
+
   board[5][5] = KING;
 
-  // Нападающие — 24
+  // Нападающие
   for (let i = 3; i <= 7; i++) {
     board[0][i] = board[10][i] = ATT;
     board[i][0] = board[i][10] = ATT;
@@ -189,7 +154,6 @@ function initBoard() {
   board[5][1] = board[5][9] = ATT;
 }
 
-// ─── RENDER ──────────────────────────────────────────────
 function getCellClass(r, c) {
   if (board[r][c] === "throne") return "cell throne";
   if (board[r][c] === "escape") return "cell escape";
@@ -206,6 +170,7 @@ function getPieceHTML(val) {
 function render() {
   const boardEl = document.getElementById("board");
   boardEl.innerHTML = '';
+
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       const cell = document.createElement("div");
@@ -217,48 +182,159 @@ function render() {
       boardEl.appendChild(cell);
     }
   }
+
   if (selected) highlightMoves();
   updateStatus();
 }
 
-function highlightMoves() {
-  if (!selected) return;
-  const [r, c] = selected;
-  const moves = getPossibleMoves(r, c);
-  moves.forEach(([tr, tc]) => {
-    document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`)?.classList.add("possible");
+function startNewGameSingle() {
+  selected = null;
+  currentPlayer = DEF;
+  gameOver = false;
+  gameStarted = true;
+
+  if (conn) {
+    conn.close();
+    conn = null;
+    roomInfoEl.innerHTML = "";
+  }
+
+  initEmptyBoard();
+  initFullBoard();
+  render();
+
+  statusEl.innerHTML = "Одиночная игра — ход защитников (синие)";
+}
+
+function createRoom() {
+  if (peer) peer.destroy();
+  peer = new Peer();
+  isHost = true;
+
+  peer.on('open', id => {
+    myPeerId = id;
+    const link = `${window.location.origin}${window.location.pathname}?join=${id}`;
+    roomInfoEl.innerHTML = 
+      `Комната создана!<br>` +
+      `Твой ID: <b style="color:#ff0">${id}</b><br>` +
+      `Отправь другу этот ID или <a href="${link}" target="_blank" style="color:#0f0">эту ссылку</a>`;
+    
+    startNewGameSingle();  // сразу стартуем как хозяин
+    currentPlayer = DEF;
+    render();
+  });
+
+  peer.on('connection', incomingConn => {
+    if (conn) incomingConn.close(); // только одно соединение
+    conn = incomingConn;
+    setupConnection();
+  });
+
+  peer.on('error', err => {
+    console.error(err);
+    roomInfoEl.innerHTML += `<br><span style="color:#f44">Ошибка: ${err.type || err}</span>`;
   });
 }
 
-function updateStatus() {
-  if (gameOver) return;
-  let txt = currentPlayer === DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
-  if (myPlayer !== null) {
-    txt += ` — ты играешь за ${myPlayer === DEF ? "защитников" : "нападающих"}`;
-  }
-  statusEl.textContent = txt;
+function joinRoomPrompt() {
+  const id = prompt("Введи ID комнаты:");
+  if (!id?.trim()) return;
+  joinRoom(id.trim());
 }
 
-// ─── CLICK & MOVE LOGIC ──────────────────────────────────
+function joinRoom(id) {
+  if (peer) peer.destroy();
+  peer = new Peer();
+  isHost = false;
+
+  peer.on('open', () => {
+    conn = peer.connect(id, { reliable: true });
+    setupConnection();
+  });
+
+  peer.on('error', err => {
+    console.error(err);
+    alert("Ошибка подключения: " + (err.type || err));
+  });
+}
+
+function setupConnection() {
+  conn.on('open', () => {
+    roomInfoEl.innerHTML = `Подключено! Играем ${isHost ? 'за защитников (синие)' : 'за нападающих (красные)'}`;
+    
+    if (!isHost) {
+      conn.send({ type: 'requestInit' });
+    }
+  });
+
+  conn.on('data', handleRemoteData);
+
+  conn.on('close', () => {
+    roomInfoEl.innerHTML += `<br><span style="color:#fa0">Соединение разорвано</span>`;
+    conn = null;
+  });
+
+  conn.on('error', err => console.error("Connection error:", err));
+}
+
+function handleRemoteData(data) {
+  if (data.type === 'init') {
+    board = data.board;
+    currentPlayer = data.currentPlayer;
+    gameOver = !!data.gameOver;
+    selected = null;
+    gameStarted = true;
+    render();
+  }
+  else if (data.type === 'move') {
+    const {fromR, fromC, toR, toC} = data;
+    if (!gameOver && isValidMove(fromR, fromC, toR, toC)) {
+      makeMove(fromR, fromC, toR, toC);
+      render();
+    }
+  }
+  else if (data.type === 'requestInit') {
+    if (conn && conn.open) {
+      conn.send({
+        type: 'init',
+        board: JSON.parse(JSON.stringify(board)),
+        currentPlayer,
+        gameOver
+      });
+    }
+  }
+}
+
+function startNewGame() { /* оставляем для совместимости, но теперь лучше использовать startNewGameSingle */ }
+
 function handleClick(e) {
-  if (gameOver || overlay.style.display === "flex") return;
+  if (gameOver || !gameStarted) return;
+
+  // В мультиплеере ход только своей стороне
+  if (conn && conn.open) {
+    const mySide = isHost ? DEF : ATT;
+    if (currentPlayer !== mySide) {
+      statusEl.textContent = "Ожидайте хода противника...";
+      return;
+    }
+  }
 
   const row = parseInt(e.currentTarget.dataset.row);
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
 
-  // Можно выбирать только свои фигуры
-  if (piece === myPlayer || (piece === KING && myPlayer === DEF)) {
+  if ((piece === currentPlayer) || (piece === KING && currentPlayer === DEF)) {
     selected = [row, col];
     render();
     return;
   }
 
-  if (selected && currentPlayer === myPlayer) {
-    const [fr, fc] = selected;
-    if (isValidMove(fr, fc, row, col)) {
-      makeMove(fr, fc, row, col);
+  if (selected) {
+    const [fromRow, fromCol] = selected;
+    if (isValidMove(fromRow, fromCol, row, col)) {
+      makeMove(fromRow, fromCol, row, col);
       selected = null;
+      render();
     } else {
       selected = null;
       render();
@@ -266,17 +342,23 @@ function handleClick(e) {
   }
 }
 
-function isValidMove(fr, fc, tr, tc) {
-  if (fr === tr && fc === tc) return false;
-  if (!isStraightLine(fr, fc, tr, tc)) return false;
-  if (!isPathEmpty(fr, fc, tr, tc)) return false;
-  const target = board[tr][tc];
+function isValidMove(fromR, fromC, toR, toC) {
+  if (fromR === toR && fromC === toC) return false;
+  if (!isStraightLine(fromR, fromC, toR, toC)) return false;
+  if (!isPathEmpty(fromR, fromC, toR, toC)) return false;
+
+  const target = board[toR][toC];
   if (target !== 0 && typeof target !== "string") return false;
-  if ((target === "throne" || target === "escape") && board[fr][fc] !== KING) return false;
+
+  if ((target === "throne" || target === "escape") && board[fromR][fromC] !== KING) {
+    return false;
+  }
   return true;
 }
 
-function isStraightLine(r1,c1,r2,c2) { return r1 === r2 || c1 === c2; }
+function isStraightLine(r1,c1,r2,c2) {
+  return r1 === r2 || c1 === c2;
+}
 
 function isPathEmpty(r1,c1,r2,c2) {
   const dr = Math.sign(r2 - r1);
@@ -289,11 +371,22 @@ function isPathEmpty(r1,c1,r2,c2) {
   return true;
 }
 
+function highlightMoves() {
+  if (!selected) return;
+  const [r, c] = selected;
+  const moves = getPossibleMoves(r, c);
+  moves.forEach(([tr, tc]) => {
+    const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
+    if (cell) cell.classList.add("possible");
+  });
+}
+
 function getPossibleMoves(row, col) {
   const moves = [];
   const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
   for (let [dr, dc] of dirs) {
-    let r = row + dr, c = col + dc;
+    let r = row + dr;
+    let c = col + dc;
     while (r >= 0 && r < SIZE && c >= 0 && c < SIZE) {
       if (!isValidMove(row, col, r, c)) break;
       moves.push([r, c]);
@@ -303,49 +396,58 @@ function getPossibleMoves(row, col) {
   return moves;
 }
 
-function makeMove(fr, fc, tr, tc) {
-  board[tr][tc] = board[fr][fc];
-  board[fr][fc] = 0;
-  performCaptures(tr, tc);
-  checkWinConditions();
-
-  // Отправляем ход оппоненту
-  if (conn && conn.open) {
-    conn.send({ type: 'move', fr, fc, tr, tc });
-  }
-
-  if (!gameOver) {
-    currentPlayer = currentPlayer === DEF ? ATT : DEF;
-    // Если онлайн — не показываем overlay, ходит оппонент
-    if (!conn || !conn.open) {
-      setTimeout(showTurnOverlay, 300);
-    }
-  }
-  render();
-}
-
 function performCaptures(row, col) {
   const mover = board[row][col];
   const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
+
   const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
 
   for (let [dr, dc] of dirs) {
-    const midR = row + dr, midC = col + dc;
-    const endR = row + dr*2, endC = col + dc*2;
+    const midR = row + dr;
+    const midC = col + dc;
+    const endR = row + dr * 2;
+    const endC = col + dc * 2;
+
+    if (midR < 0 || midR >= SIZE || midC < 0 || midC >= SIZE) continue;
     if (endR < 0 || endR >= SIZE || endC < 0 || endC >= SIZE) continue;
 
-    const mid = board[midR][midC];
-    const end = board[endR][endC];
+    const midPiece = board[midR][midC];
+    const endPiece = board[endR][endC];
 
-    if ((mid === opponent || mid === KING) &&
-        (end === mover || end === KING || end === "throne" || end === "escape")) {
-      if (mid !== KING) board[midR][midC] = 0;
+    const isClosingValid = (endPiece === mover || 
+                            endPiece === KING || 
+                            endPiece === "throne" || 
+                            endPiece === "escape");
+
+    if ((midPiece === opponent || midPiece === KING) && isClosingValid) {
+      if (midPiece !== KING) {
+        board[midR][midC] = 0;
+      }
     }
+  }
+}
+
+function makeMove(fromR, fromC, toR, toC) {
+  board[toR][toC] = board[fromR][fromC];
+  board[fromR][fromC] = 0;
+
+  performCaptures(toR, toC);
+  checkWinConditions();
+
+  currentPlayer = (currentPlayer === DEF) ? ATT : DEF;
+
+  // Отправляем ход оппоненту
+  if (conn && conn.open) {
+    conn.send({
+      type: 'move',
+      fromR, fromC, toR, toC
+    });
   }
 }
 
 function checkWinConditions() {
-  for (let [r,c] of [[0,0],[0,10],[10,0],[10,10]]) {
+  // Побег короля в угол
+  for (let [r, c] of [[0,0],[0,10],[10,0],[10,10]]) {
     if (board[r][c] === KING) {
       gameOver = true;
       statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
@@ -353,143 +455,65 @@ function checkWinConditions() {
     }
   }
 
-  let kr = -1, kc = -1;
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (board[r][c] === KING) { kr = r; kc = c; }
+  // Поиск короля
+  let kingR = -1, kingC = -1;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === KING) { kingR = r; kingC = c; }
+    }
   }
-  if (kr === -1) {
+
+  if (kingR === -1) {
     gameOver = true;
     statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
     return;
   }
 
-  if (kr === 5 && kc === 5) {
-    let count = 0;
-    [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
-      if (board[5+dr][5+dc] === ATT) count++;
-    });
-    if (count >= 4) {
+  // Захват на троне 4-мя нападающими
+  if (kingR === 5 && kingC === 5) {
+    let attackersAround = 0;
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (let [dr, dc] of dirs) {
+      const r = 5 + dr, c = 5 + dc;
+      if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r][c] === ATT) {
+        attackersAround++;
+      }
+    }
+    if (attackersAround >= 4) {
       gameOver = true;
       statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен на троне`;
     }
   }
 }
 
-// ─── PEERJS МУЛЬТИПЛЕЕР ──────────────────────────────────
-function createRoom() {
-  isHost = true;
-  myPlayer = DEF;
-  currentPlayer = DEF;
-  peer = new Peer();
+function updateStatus() {
+  if (gameOver) return;
+  if (!gameStarted) {
+    statusEl.textContent = "Выберите режим игры";
+    return;
+  }
 
-  peer.on('open', id => {
-    peerIdEl.innerHTML = `Твой ID: <b>${id}</b><br>Отправь этот код другу`;
-    alert(`Комната создана!\nТвой ID: ${id}\nПередай его второму игроку.`);
-  });
+  let text = currentPlayer === DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
 
-  peer.on('connection', connection => {
-    conn = connection;
-    setupConnection();
-    alert("Игрок подключился! Начинаем игру.");
-  });
+  if (conn && conn.open) {
+    text += ` — ${isHost ? 'ТВОЙ' : 'противника'}`;
+  }
+
+  statusEl.textContent = text;
 }
 
-function joinRoom() {
-  const id = document.getElementById("roomIdInput").value.trim();
-  if (!id) return alert("Введите ID комнаты!");
-
-  isHost = false;
-  myPlayer = ATT;
-  peer = new Peer();
-
-  conn = peer.connect(id);
-
-  setupConnection();
-  peerIdEl.innerHTML = `Подключаемся к ${id}...`;
-}
-
-function setupConnection() {
-  conn.on('open', () => {
-    peerIdEl.innerHTML += "<br><span style='color:#88ff88'>Соединение установлено!</span>";
-    if (isHost) {
-      // Хост отправляет начальное состояние
-      conn.send({ type: 'init', board, currentPlayer });
-    } else {
-      // Гость запрашивает состояние
-      conn.send({ type: 'requestInit' });
-    }
-  });
-
-  conn.on('data', data => {
-    if (data.type === 'move') {
-      board[data.tr][data.tc] = board[data.fr][data.fc];
-      board[data.fr][data.fc] = 0;
-      performCaptures(data.tr, data.tc);
-      checkWinConditions();
-      currentPlayer = currentPlayer === DEF ? ATT : DEF;
-      selected = null;
-      render();
-    }
-    else if (data.type === 'init') {
-      board = data.board;
-      currentPlayer = data.currentPlayer;
-      render();
-    }
-    else if (data.type === 'requestInit') {
-      if (isHost) {
-        conn.send({ type: 'init', board, currentPlayer });
-      }
-    }
-  });
-
-  conn.on('close', () => {
-    alert("Соединение потеряно");
-    peerIdEl.innerHTML += "<br><span style='color:#ff4444'>Оппонент отключился</span>";
-  });
-
-  conn.on('error', err => {
-    console.error(err);
-    alert("Ошибка соединения: " + err.message);
-  });
-}
-
-// ─── HOT-SEAT (локальная передача) ───────────────────────
-function showTurnOverlay() {
-  if (conn && conn.open) return; // онлайн — не показываем
-  render();
-  const name = currentPlayer === DEF ? "ЗАЩИТНИКОВ (синие)" : "НАПАДАЮЩИХ (красные)";
-  overlayTitle.textContent = `Ход ${name}`;
-  overlayText.innerHTML = `Передайте устройство<br>второму игроку`;
-  overlay.style.display = "flex";
-}
-
-function continueGame() {
-  overlay.style.display = "none";
-  render();
-}
-
-// ─── RESET ───────────────────────────────────────────────
-function resetGame() {
-  if (conn) conn.close();
-  peer?.destroy();
-  peer = null;
-  conn = null;
-  myPlayer = null;
-  isHost = false;
-  overlay.style.display = "none";
-  selected = null;
-  currentPlayer = DEF;
-  gameOver = false;
-  initBoard();
-  render();
-  peerIdEl.innerHTML = "";
-  document.getElementById("roomIdInput").value = "";
-}
-
-// ─── START ───────────────────────────────────────────────
 window.onload = () => {
-  initBoard();
+  initEmptyBoard();
   render();
+
+  // Автоприсоединение по ссылке ?join=XXXXX
+  const urlParams = new URLSearchParams(window.location.search);
+  const joinId = urlParams.get('join');
+  if (joinId) {
+    setTimeout(() => {
+      joinRoom(joinId);
+    }, 600);
+  }
 };
 </script>
 </body>
