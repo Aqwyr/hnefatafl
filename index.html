@@ -168,7 +168,7 @@
 
     <div id="multiplayerPanel">
         <button id="singleBtn">Новая игра (одиночная)</button>
-        <button id="createBtn">Создать комнату (я — защитники)</button>
+        <button id="createBtn">Создать комнату</button>
         <button id="joinBtn">Присоединиться по ID комнаты</button>
         <div id="roomInfo"></div>
     </div>
@@ -196,7 +196,7 @@
         let getMove = null;
         let sendInit = null;
         let getInit = null;
-        let isBlueSide = true;
+        let isBlueSide = true; // теперь означает «я играю за защитников»
 
         function initEmptyBoard() {
             board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
@@ -262,7 +262,7 @@
             statusEl.textContent = "Одиночная игра — ход защитников (синие)";
         }
 
-        async function createOrJoinRoom(roomId, asCreator = true) {
+        async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
             if (room) room.leave();
             room = joinRoom({ appId: 'hnefatafl-f8-2025' }, roomId);
 
@@ -282,15 +282,23 @@
                 currentPlayer = data.currentPlayer;
                 gameOver = !!data.gameOver;
                 gameStarted = true;
-                isBlueSide = false;
+                isBlueSide = !data.hostIsDefender; // противоположная сторона хоста
                 selected = null;
                 render();
-                statusEl.textContent = "Игра начата. Твой цвет — нападающие (красные)";
+                statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
+
+                // обновляем информацию о комнате для присоединившегося
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
             });
 
             room.onPeerJoin(() => {
                 if (asCreator && board[5][5] === KING) {
-                    sendInit({ board: JSON.parse(JSON.stringify(board)), currentPlayer, gameOver });
+                    sendInit({
+                        board: JSON.parse(JSON.stringify(board)),
+                        currentPlayer,
+                        gameOver,
+                        hostIsDefender: isBlueSide // передаём, за кого играет хост
+                    });
                 }
             });
 
@@ -302,13 +310,23 @@
             currentPlayer = DEF;
             gameOver = false;
             gameStarted = true;
-            isBlueSide = asCreator;
+
+            // === ИСПРАВЛЕНИЕ: теперь хост выбирает сторону ===
+            if (asCreator) {
+                isBlueSide = hostIsDefender;
+            } else {
+                isBlueSide = false; // временно (будет перезаписано в getInit)
+            }
 
             if (asCreator) { initEmptyBoard(); initFullBoard(); }
             render();
 
-            const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
-            roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>${asCreator ? 'Ты — защитники (синие)' : 'Ты — нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
+            if (asCreator) {
+                const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
+            } else {
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ожидание инициализации от хоста...`;
+            }
         }
 
         function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
@@ -364,9 +382,7 @@
         function handleClick(e) {
             if (gameOver || !gameStarted) return;
 
-            // === ИСПРАВЛЕНИЕ: в одиночной игре НЕ блокируем ход ===
             if (room) {
-                // только в мультиплеере проверяем сторону
                 const mySide = isBlueSide ? DEF : ATT;
                 if (currentPlayer !== mySide) {
                     statusEl.textContent = currentPlayer === DEF
@@ -375,7 +391,6 @@
                     return;
                 }
             }
-            // в локальной игре (room === null) ход всегда разрешён
 
             const row = parseInt(e.currentTarget.dataset.row);
             const col = parseInt(e.currentTarget.dataset.col);
@@ -509,7 +524,16 @@
         document.getElementById("singleBtn").onclick = startNewGameSingle;
         document.getElementById("createBtn").onclick = () => {
             const id = prompt("Название комнаты")?.trim();
-            if (id) createOrJoinRoom(id, true);
+            if (!id) return;
+
+            const choice = prompt("Выберите свою сторону:\n1 — Защитники (синие, начинают)\n2 — Нападающие (красные)")?.trim();
+            if (!choice || (choice !== "1" && choice !== "2")) {
+                if (choice) alert("Неверный выбор стороны! Создание комнаты отменено.");
+                return;
+            }
+
+            const hostIsDefender = choice === "1";
+            createOrJoinRoom(id, true, hostIsDefender);
         };
         document.getElementById("joinBtn").onclick = () => {
             const id = prompt("ID комнаты")?.trim();
