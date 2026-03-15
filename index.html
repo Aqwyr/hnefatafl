@@ -265,15 +265,16 @@
 		async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
 			if (room) room.leave();
 
+			// ==================== БЕСПЛАТНЫЙ TURN + правильный rtcConfig ====================
 			const config = {
 				appId: 'hnefatafl-f8-2025',
 
-				rtcConfig: { 
+				rtcConfig: {
 					iceServers: [
-						{ urls: 'stun:stun.l.google.com:19302' }, 
+						{ urls: 'stun:stun.l.google.com:19302' },
 						{ urls: 'stun:openrelay.metered.ca:80' },
 
-						{
+						{   // ← главный TURN (80/443 порты — проходят почти везде)
 							urls: [
 								'turn:openrelay.metered.ca:80?transport=udp',
 								'turn:openrelay.metered.ca:80?transport=tcp',
@@ -285,6 +286,7 @@
 					]
 				}
 			};
+			// ============================================================================
 
 			room = joinRoom(config, roomId);
 
@@ -312,16 +314,18 @@
 				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
 			});
 
-			room.onPeerJoin(() => {
+			// ==================== ИСПРАВЛЕНИЕ ИНИЦИАЛИЗАЦИИ ====================
+			room.onPeerJoin((peerId) => {                    // ← теперь принимаем peerId
 				if (asCreator && board[5][5] === KING) {
 					sendInit({
 						board: JSON.parse(JSON.stringify(board)),
 						currentPlayer,
 						gameOver,
 						hostIsDefender: isBlueSide
-					});
+					}, peerId);                              // ← отправляем ТОЛЬКО новому игроку
 				}
 			});
+			// =================================================================
 
 			room.onPeerLeave(() => {
 				if (!gameOver) statusEl.textContent = "Противник отключился…";
