@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл — исправленная победа</title>
+    <title>Хнефатафл</title>
     <style>
         /* Стили без изменений (можно оставить как в предыдущем ответе) */
         body {
@@ -301,10 +301,12 @@
             });
         }
 
-        // ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ ЗАХВАТА (ТЕПЕРЬ УДАЛЯЕТ КОРОЛЯ) =====
+        // ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ ЗАХВАТА (СООТВЕТСТВУЕТ ПРАВИЛАМ) =====
         function performCaptures(row, col) {
-            const mover = board[row][col];
-            const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
+            const mover = board[row][col]; // фигура, которая только что сделала ход
+            // Определяем, кто считается "своим" для опоры захвата
+            const isMoverDefender = (mover === DEF || mover === KING);
+            
             const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
 
             for (let [dr,dc] of dirs) {
@@ -316,17 +318,40 @@
                 const midPiece = board[midR][midC];
                 const endPiece = board[endR][endC];
 
-                // Захват, если средняя фигура - противник (включая короля) и крайняя - mover или трон/угол
-                if ((midPiece === opponent || midPiece === KING) &&
-                    (endPiece === mover || endPiece === KING || endPiece === "throne" || endPiece === "escape")) {
-                    // Убираем любую фигуру, включая короля
+                // Если средняя клетка пуста или это трон/угол (не фигура) – нечего захватывать
+                if (midPiece === 0 || typeof midPiece === "string") continue;
+
+                // Проверяем, может ли средняя фигура быть захвачена:
+                // - она должна быть противником по отношению к mover (для короля своя логика)
+                // - и за ней должна быть подходящая опора
+
+                const isMidOpponent = (isMoverDefender && midPiece === ATT) || (!isMoverDefender && (midPiece === DEF || midPiece === KING));
+                // Для атакующего король является врагом, но захват короля регулируется отдельно
+
+                // Определяем допустимые опоры в зависимости от типа mover
+                let validEnd = false;
+                if (isMoverDefender) {
+                    // Защитники и король могут опираться на: защитника, короля, трон, угол
+                    validEnd = (endPiece === DEF || endPiece === KING || endPiece === "throne" || endPiece === "escape");
+                } else {
+                    // Атакующие могут опираться только на атакующего, трон или угол (НЕ на короля)
+                    validEnd = (endPiece === ATT || endPiece === "throne" || endPiece === "escape");
+                }
+
+                if (isMidOpponent && validEnd) {
+                    // Особое правило: король на троне не может быть захвачен таким образом
+                    if (midPiece === KING && midR === 5 && midC === 5) {
+                        // Король на троне – не захватываем здесь, проверка будет в checkWinConditions
+                        continue;
+                    }
+                    // Захватываем фигуру (включая короля, если он не на троне)
                     board[midR][midC] = 0;
                 }
             }
         }
 
         function checkWinConditions() {
-            // Проверка победы защитников (король на углах)
+            // Победа защитников (король в углу)
             for (let [r,c] of [[0,0],[0,10],[10,0],[10,10]]) {
                 if (board[r][c] === KING) {
                     gameOver = true;
@@ -341,13 +366,13 @@
                     if (board[r][c]===KING) { kingR=r; kingC=c; }
                 }
             }
-            // Если короля нет на доске – победа нападающих
+            // Если короля нет – победа нападающих
             if (kingR===-1) {
                 gameOver = true;
                 statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
                 return;
             }
-            // Если король на троне и окружён с четырёх сторон – победа нападающих
+            // Если король на троне и окружён четырьмя атакующими – победа нападающих
             if (kingR===5 && kingC===5) {
                 let cnt = 0;
                 [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
@@ -370,7 +395,7 @@
                 board[fromR][fromC] = 0;
                 performCaptures(toR, toC);
                 checkWinConditions();
-                currentPlayer = currentPlayer===DEF ? ATT : DEF;
+                if (!gameOver) currentPlayer = currentPlayer===DEF ? ATT : DEF;
                 if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
                 render();
                 return;
@@ -403,7 +428,7 @@
                 flyer.remove();
                 performCaptures(toR, toC);
                 checkWinConditions();
-                currentPlayer = currentPlayer===DEF ? ATT : DEF;
+                if (!gameOver) currentPlayer = currentPlayer===DEF ? ATT : DEF;
                 if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
                 render();
             }, { once: true });
@@ -472,8 +497,7 @@
 
             const config = {
                 appId: 'hnefatafl-f8-2025',
-                // Отключаем WebTorrent трекеры, чтобы избежать ошибки wss://tracker.btorrent.xyz/
-                trackers: false,
+                trackers: false, // отключаем WebTorrent трекеры, чтобы избежать ошибок wss
                 rtcConfig: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
