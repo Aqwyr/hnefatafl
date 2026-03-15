@@ -194,8 +194,13 @@
         let room = null;
         let sendMove = null;
         let getMove = null;
-        let sendInit = null;
-        let getInit = null;
+
+        // === НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ НАДЁЖНОЙ ИНИЦИАЛИЗАЦИИ ===
+        let sendRequestInit = null;
+        let getRequestInit = null;
+        let sendState = null;
+        let getState = null;
+
         let isBlueSide = true; // теперь означает «я играю за защитников»
 
         function initEmptyBoard() {
@@ -262,96 +267,106 @@
             statusEl.textContent = "Одиночная игра — ход защитников (синие)";
         }
 
-		async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
-			if (room) room.leave();
+        async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
+            if (room) room.leave();
 
-			// ==================== БЕСПЛАТНЫЙ TURN + правильный rtcConfig ====================
-			const config = {
-				appId: 'hnefatafl-f8-2025',
+            // ==================== БЕСПЛАТНЫЙ TURN (без регистрации) ====================
+            const config = {
+                appId: 'hnefatafl-f8-2025',
+                rtcConfig: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:openrelay.metered.ca:80' },
+                        {
+                            urls: [
+                                'turn:openrelay.metered.ca:80?transport=udp',
+                                'turn:openrelay.metered.ca:80?transport=tcp',
+                                'turn:openrelay.metered.ca:443?transport=tcp'
+                            ],
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        }
+                    ]
+                }
+            };
+            // ============================================================================
 
-				rtcConfig: {
-					iceServers: [
-						{ urls: 'stun:stun.l.google.com:19302' },
-						{ urls: 'stun:openrelay.metered.ca:80' },
+            room = joinRoom(config, roomId);
 
-						{   // ← главный TURN (80/443 порты — проходят почти везде)
-							urls: [
-								'turn:openrelay.metered.ca:80?transport=udp',
-								'turn:openrelay.metered.ca:80?transport=tcp',
-								'turn:openrelay.metered.ca:443?transport=tcp'
-							],
-							username: 'openrelayproject',
-							credential: 'openrelayproject'
-						}
-					]
-				}
-			};
-			// ============================================================================
+            // === Действия для ходов ===
+            [sendMove, getMove] = room.makeAction('move');
 
-			room = joinRoom(config, roomId);
+            // === Действия для инициализации (запрос-ответ) ===
+            [sendRequestInit, getRequestInit] = room.makeAction('requestInit');
+            [sendState, getState] = room.makeAction('state');
 
-			[sendMove, getMove] = room.makeAction('move');
-			[sendInit, getInit] = room.makeAction('init');
+            // === Обработка ходов ===
+            getMove((data) => {
+                if (gameOver) return;
+                const { fromR, fromC, toR, toC } = data;
+                if (isValidMove(fromR, fromC, toR, toC)) {
+                    makeMove(fromR, fromC, toR, toC, false);
+                }
+            });
 
-			getMove((data) => {
-				if (gameOver) return;
-				const { fromR, fromC, toR, toC } = data;
-				if (isValidMove(fromR, fromC, toR, toC)) {
-					makeMove(fromR, fromC, toR, toC, false);
-				}
-			});
+            // === Joiner запрашивает состояние у хоста ===
+            room.onPeerJoin((peerId) => {
+                if (!asCreator) {
+                    sendRequestInit({}, peerId);
+                }
+            });
 
-			getInit((data) => {
-				board = data.board;
-				currentPlayer = data.currentPlayer;
-				gameOver = !!data.gameOver;
-				gameStarted = true;
-				isBlueSide = !data.hostIsDefender;
-				selected = null;
-				render();
-				statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
+            // === Хост отвечает на запрос ===
+            getRequestInit((data, senderPeerId) => {
+                if (asCreator) {
+                    sendState({
+                        board: JSON.parse(JSON.stringify(board)),
+                        currentPlayer,
+                        gameOver,
+                        hostIsDefender: isBlueSide
+                    }, senderPeerId);
+                }
+            });
 
-				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
-			});
+            // === Joiner получает состояние и запускает игру ===
+            getState((data) => {
+                board = data.board;
+                currentPlayer = data.currentPlayer;
+                gameOver = !!data.gameOver;
+                gameStarted = true;
+                isBlueSide = !data.hostIsDefender;
+                selected = null;
+                render();
+                statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
 
-			// ==================== ИСПРАВЛЕНИЕ ИНИЦИАЛИЗАЦИИ ====================
-			room.onPeerJoin((peerId) => {                    // ← теперь принимаем peerId
-				if (asCreator && board[5][5] === KING) {
-					sendInit({
-						board: JSON.parse(JSON.stringify(board)),
-						currentPlayer,
-						gameOver,
-						hostIsDefender: isBlueSide
-					}, peerId);                              // ← отправляем ТОЛЬКО новому игроку
-				}
-			});
-			// =================================================================
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
+            });
 
-			room.onPeerLeave(() => {
-				if (!gameOver) statusEl.textContent = "Противник отключился…";
-			});
+            room.onPeerLeave(() => {
+                if (!gameOver) statusEl.textContent = "Противник отключился…";
+            });
 
-			selected = null;
-			currentPlayer = DEF;
-			gameOver = false;
-			gameStarted = true;
+            selected = null;
+            currentPlayer = DEF;
+            gameOver = false;
+            gameStarted = true;
 
-			if (asCreator) {
-				isBlueSide = hostIsDefender;
-			} else {
-				isBlueSide = false;
-			}
+            if (asCreator) {
+                isBlueSide = hostIsDefender;
+            } else {
+                isBlueSide = false;
+            }
 
-			if (asCreator) { initEmptyBoard(); initFullBoard(); }
-			render();
+            if (asCreator) { initEmptyBoard(); initFullBoard(); }
+            render();
 
-			if (asCreator) {
-				const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
-				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
-			} else {
-				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ожидание инициализации от хоста...`;
-			}
-		}
+            if (asCreator) {
+                const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
+            } else {
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ожидание инициализации от хоста...`;
+            }
+        }
 
         function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
             const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
