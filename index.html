@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл — окончательная версия</title>
+    <title>Хнефатафл — финальная версия</title>
     <style>
-        /* Стили без изменений (можно оставить те же) */
+        /* Стили без изменений (для краткости оставлены, можно скопировать из предыдущих версий) */
         body {
             font-family: Arial, Helvetica, sans-serif;
             background: #1a1a1a;
@@ -155,85 +155,58 @@
     </div>
 
     <script type="module">
-        // ===== ПЫТАЕМСЯ ЗАГРУЗИТЬ TRYSTERO РАЗНЫМИ СПОСОБАМИ =====
+        // ===== ЗАГРУЗКА TRYSTERO =====
         let joinRoom;
-
         try {
-            // Попробуем esm.sh (наиболее стабильный)
             const module = await import('https://esm.sh/trystero@0.12.0');
             joinRoom = module.joinRoom;
-            console.log('Trystero загружен с esm.sh');
-        } catch (e1) {
-            console.warn('esm.sh не сработал:', e1);
-            try {
-                // Попробуем unpkg
-                const module = await import('https://unpkg.com/trystero@0.12.0?module');
-                joinRoom = module.joinRoom;
-                console.log('Trystero загружен с unpkg');
-            } catch (e2) {
-                console.warn('unpkg не сработал:', e2);
-                try {
-                    // Попробуем skypack
-                    const module = await import('https://cdn.skypack.dev/trystero@0.12.0');
-                    joinRoom = module.joinRoom;
-                    console.log('Trystero загружен со skypack');
-                } catch (e3) {
-                    console.error('Все CDN недоступны:', e3);
-                    document.getElementById('status').innerHTML = 'Не удалось загрузить библиотеку для онлайн-игры. Работает только одиночный режим.';
-                }
-            }
+            console.log('Trystero загружен');
+        } catch (e) {
+            console.error('Не удалось загрузить Trystero:', e);
+            document.getElementById('status').innerHTML = 'Ошибка загрузки библиотеки. Работает только одиночный режим.';
+            joinRoom = null;
         }
 
-        // Если библиотека не загружена, подменяем функцию создания комнаты на заглушку
-        if (typeof joinRoom !== 'function') {
-            joinRoom = () => {
-                throw new Error('Trystero не загружен');
-            };
-            // Отключаем кнопки мультиплеера или показываем предупреждение
-            document.getElementById('createBtn').disabled = true;
-            document.getElementById('joinBtn').disabled = true;
-        }
-
-        // ===== ДАЛЬШЕ ИДЁТ ОСНОВНОЙ КОД =====
+        // ===== КОНСТАНТЫ =====
         const SIZE = 11;
-        let board = [];
-        let selected = null;
-        let currentPlayer = 1;
-        let gameOver = false;
-        let gameStarted = false;
-
         const DEF = 1;
         const ATT = 2;
         const KING = 3;
 
-        const statusEl = document.getElementById("status");
-        const roomInfoEl = document.getElementById("roomInfo");
-        const boardEl = document.getElementById("board");
-
+        // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
+        let board = [];
+        let selected = null;
+        let currentPlayer = DEF;
+        let gameOver = false;
+        let gameStarted = false;
         let room = null;
         let sendMove = null;
         let getMove = null;
-
-        // Действия для инициализации (запрос-ответ)
         let sendRequestInit = null;
         let getRequestInit = null;
         let sendState = null;
         let getState = null;
+        let isBlueSide = true;
 
-        let isBlueSide = true; // означает «я играю за защитников»
+        // ===== ЭЛЕМЕНТЫ =====
+        const statusEl = document.getElementById("status");
+        const roomInfoEl = document.getElementById("roomInfo");
+        const boardEl = document.getElementById("board");
 
+        // ===== ИНИЦИАЛИЗАЦИЯ ДОСКИ =====
         function initEmptyBoard() {
             board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
             board[5][5] = "throne";
-            [[0, 0], [0, 10], [10, 0], [10, 10]].forEach(([r, c]) => board[r][c] = "escape");
+            [[0,0],[0,10],[10,0],[10,10]].forEach(([r,c]) => board[r][c] = "escape");
         }
 
         function initFullBoard() {
-            [[5, 3], [5, 4], [5, 6], [5, 7],
-            [3, 5], [4, 5], [6, 5], [7, 5],
-            [4, 4], [4, 6], [6, 4], [6, 6]].forEach(([r, c]) => board[r][c] = DEF);
+            // защитники и король
+            [[5,3],[5,4],[5,6],[5,7],[3,5],[4,5],[6,5],[7,5],[4,4],[4,6],[6,4],[6,6]]
+                .forEach(([r,c]) => board[r][c] = DEF);
             board[5][5] = KING;
 
+            // нападающие
             for (let i = 3; i <= 7; i++) {
                 board[0][i] = board[10][i] = ATT;
                 board[i][0] = board[i][10] = ATT;
@@ -242,7 +215,12 @@
             board[5][1] = board[5][9] = ATT;
         }
 
+        // ===== БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КЛАССА ЯЧЕЙКИ =====
         function getCellClass(r, c) {
+            // Защита от битой доски
+            if (!board || !Array.isArray(board) || board.length !== SIZE || !board[r] || !Array.isArray(board[r])) {
+                return "cell light"; // fallback
+            }
             if (board[r][c] === "throne") return "cell throne";
             if (board[r][c] === "escape") return "cell escape";
             return (r + c) % 2 === 0 ? "cell light" : "cell dark";
@@ -255,7 +233,13 @@
             return '';
         }
 
+        // ===== РЕНДЕР =====
         function render() {
+            // Проверяем целостность доски
+            if (!board || !Array.isArray(board) || board.length !== SIZE) {
+                console.warn('Board повреждена, восстанавливаем...');
+                initEmptyBoard();
+            }
             boardEl.innerHTML = '';
             for (let r = 0; r < SIZE; r++) {
                 for (let c = 0; c < SIZE; c++) {
@@ -263,7 +247,7 @@
                     cell.className = getCellClass(r, c);
                     cell.dataset.row = r;
                     cell.dataset.col = c;
-                    cell.innerHTML = getPieceHTML(board[r][c]);
+                    cell.innerHTML = getPieceHTML(board[r]?.[c]);
                     cell.addEventListener("click", handleClick);
                     boardEl.appendChild(cell);
                 }
@@ -272,6 +256,187 @@
             updateStatus();
         }
 
+        // ===== ЛОГИКА ХОДОВ =====
+        function isValidMove(fromR, fromC, toR, toC) {
+            if (fromR === toR && fromC === toC) return false;
+            if (!isStraightLine(fromR, fromC, toR, toC)) return false;
+            if (!isPathEmpty(fromR, fromC, toR, toC)) return false;
+            const target = board[toR][toC];
+            if (target !== 0 && typeof target !== "string") return false;
+            if ((target === "throne" || target === "escape") && board[fromR][fromC] !== KING) return false;
+            return true;
+        }
+
+        function isStraightLine(r1,c1,r2,c2) { return r1===r2 || c1===c2; }
+
+        function isPathEmpty(r1,c1,r2,c2) {
+            const dr = Math.sign(r2-r1), dc = Math.sign(c2-c1);
+            let r = r1+dr, c = c1+dc;
+            while (r !== r2 || c !== c2) {
+                if (board[r][c] !== 0 && typeof board[r][c] !== "string") return false;
+                r += dr; c += dc;
+            }
+            return true;
+        }
+
+        function getPossibleMoves(row, col) {
+            const moves = [];
+            const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+            for (let [dr,dc] of dirs) {
+                let r = row+dr, c = col+dc;
+                while (r>=0 && r<SIZE && c>=0 && c<SIZE) {
+                    if (!isValidMove(row, col, r, c)) break;
+                    moves.push([r,c]);
+                    r += dr; c += dc;
+                }
+            }
+            return moves;
+        }
+
+        function highlightMoves() {
+            if (!selected) return;
+            const [r,c] = selected;
+            getPossibleMoves(r,c).forEach(([tr,tc]) => {
+                const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
+                if (cell) cell.classList.add("possible");
+            });
+        }
+
+        function performCaptures(row, col) {
+            const mover = board[row][col];
+            const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
+            const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+
+            for (let [dr,dc] of dirs) {
+                const midR = row+dr, midC = col+dc;
+                const endR = row+dr*2, endC = col+dc*2;
+                if (midR<0||midR>=SIZE||midC<0||midC>=SIZE) continue;
+                if (endR<0||endR>=SIZE||endC<0||endC>=SIZE) continue;
+
+                const midPiece = board[midR][midC];
+                const endPiece = board[endR][endC];
+
+                if ((midPiece === opponent || midPiece === KING) &&
+                    (endPiece === mover || endPiece === KING || endPiece === "throne" || endPiece === "escape")) {
+                    if (midPiece !== KING) board[midR][midC] = 0;
+                }
+            }
+        }
+
+        function checkWinConditions() {
+            for (let [r,c] of [[0,0],[0,10],[10,0],[10,10]]) {
+                if (board[r][c] === KING) {
+                    gameOver = true;
+                    statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
+                    return;
+            }}
+            let kingR=-1, kingC=-1;
+            for (let r=0; r<SIZE; r++) for (let c=0; c<SIZE; c++) if (board[r][c]===KING) { kingR=r; kingC=c; }
+            if (kingR===-1) {
+                gameOver = true;
+                statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
+                return;
+            }
+            if (kingR===5 && kingC===5) {
+                let cnt = 0;
+                [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
+                    const rr=5+dr, cc=5+dc;
+                    if (rr>=0&&rr<SIZE&&cc>=0&&cc<SIZE && board[rr][cc]===ATT) cnt++;
+                });
+                if (cnt>=4) {
+                    gameOver=true;
+                    statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен на троне`;
+                }
+            }
+        }
+
+        function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
+            const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
+            const pieceEl = fromCell?.querySelector('.piece');
+
+            if (!pieceEl) {
+                board[toR][toC] = board[fromR][fromC];
+                board[fromR][fromC] = 0;
+                performCaptures(toR, toC);
+                checkWinConditions();
+                currentPlayer = currentPlayer===DEF ? ATT : DEF;
+                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
+                render();
+                return;
+            }
+
+            const flyer = pieceEl.cloneNode(true);
+            flyer.classList.add('flying');
+            const boardRect = boardEl.getBoundingClientRect();
+            const fromRect = pieceEl.getBoundingClientRect();
+
+            flyer.style.left = `${fromRect.left - boardRect.left}px`;
+            flyer.style.top = `${fromRect.top - boardRect.top}px`;
+            flyer.style.width = `${fromRect.width}px`;
+            flyer.style.height = `${fromRect.height}px`;
+            boardEl.appendChild(flyer);
+
+            board[toR][toC] = board[fromR][fromC];
+            board[fromR][fromC] = 0;
+
+            requestAnimationFrame(() => {
+                const toCell = document.querySelector(`[data-row="${toR}"][data-col="${toC}"]`);
+                if (toCell) {
+                    const toRect = toCell.getBoundingClientRect();
+                    flyer.style.left = `${toRect.left - boardRect.left}px`;
+                    flyer.style.top = `${toRect.top - boardRect.top}px`;
+                }
+            });
+
+            flyer.addEventListener('transitionend', () => {
+                flyer.remove();
+                performCaptures(toR, toC);
+                checkWinConditions();
+                currentPlayer = currentPlayer===DEF ? ATT : DEF;
+                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
+                render();
+            }, { once: true });
+        }
+
+        function handleClick(e) {
+            if (gameOver || !gameStarted) return;
+            if (room) {
+                const mySide = isBlueSide ? DEF : ATT;
+                if (currentPlayer !== mySide) {
+                    statusEl.textContent = currentPlayer===DEF ? "Ожидайте хода защитников…" : "Ожидайте хода нападающих…";
+                    return;
+                }
+            }
+            const row = parseInt(e.currentTarget.dataset.row);
+            const col = parseInt(e.currentTarget.dataset.col);
+            const piece = board[row][col];
+
+            if ((piece === currentPlayer) || (piece === KING && currentPlayer === DEF)) {
+                selected = [row, col];
+                render();
+                return;
+            }
+
+            if (selected) {
+                const [fromRow, fromCol] = selected;
+                if (isValidMove(fromRow, fromCol, row, col)) {
+                    makeMove(fromRow, fromCol, row, col);
+                    selected = null;
+                } else {
+                    selected = null;
+                    render();
+                }
+            }
+        }
+
+        function updateStatus() {
+            if (gameOver || !gameStarted) return;
+            let text = currentPlayer===DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
+            if (room) text += ` — ${isBlueSide ? 'ТВОЙ' : 'противника'}`;
+            statusEl.textContent = text;
+        }
+
+        // ===== ОДИНОЧНАЯ ИГРА =====
         function startNewGameSingle() {
             if (room) { room.leave(); room = null; sendMove = getMove = null; }
             selected = null;
@@ -286,6 +451,7 @@
             statusEl.textContent = "Одиночная игра — ход защитников (синие)";
         }
 
+        // ===== СОЗДАНИЕ / ПОДКЛЮЧЕНИЕ К КОМНАТЕ =====
         async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
             if (!joinRoom) {
                 statusEl.textContent = 'Библиотека не загружена, онлайн-режим недоступен';
@@ -302,16 +468,8 @@
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
-                        {
-                            urls: 'turn:openrelay.metered.ca:80?transport=udp',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        }
+                        { urls: 'turn:openrelay.metered.ca:80?transport=udp', username: 'openrelayproject', credential: 'openrelayproject' },
+                        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
                     ]
                 }
             };
@@ -382,6 +540,7 @@
                 if (!gameOver) statusEl.textContent = "Противник отключился…";
             });
 
+            // Сброс состояния игры
             selected = null;
             currentPlayer = DEF;
             gameOver = false;
@@ -396,8 +555,11 @@
             if (asCreator) {
                 initEmptyBoard();
                 initFullBoard();
+                render(); // Хост сразу видит свою расстановку
+            } else {
+                // Для присоединяющегося не рендерим повторно — доска уже пустая от initEmptyBoard()
+                // Ждём getState
             }
-            render();
 
             if (asCreator) {
                 const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
@@ -407,224 +569,29 @@
             }
         }
 
-        function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
-            const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
-            const pieceEl = fromCell?.querySelector('.piece');
-
-            if (!pieceEl) {
-                board[toR][toC] = board[fromR][fromC];
-                board[fromR][fromC] = 0;
-                performCaptures(toR, toC);
-                checkWinConditions();
-                currentPlayer = currentPlayer === DEF ? ATT : DEF;
-                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
-                render();
-                return;
-            }
-
-            const flyer = pieceEl.cloneNode(true);
-            flyer.classList.add('flying');
-
-            const boardRect = boardEl.getBoundingClientRect();
-            const fromRect = pieceEl.getBoundingClientRect();
-
-            flyer.style.left = `${fromRect.left - boardRect.left}px`;
-            flyer.style.top = `${fromRect.top - boardRect.top}px`;
-            flyer.style.width = `${fromRect.width}px`;
-            flyer.style.height = `${fromRect.height}px`;
-
-            boardEl.appendChild(flyer);
-
-            board[toR][toC] = board[fromR][fromC];
-            board[fromR][fromC] = 0;
-
-            requestAnimationFrame(() => {
-                const toCell = document.querySelector(`[data-row="${toR}"][data-col="${toC}"]`);
-                if (toCell) {
-                    const toRect = toCell.getBoundingClientRect();
-                    flyer.style.left = `${toRect.left - boardRect.left}px`;
-                    flyer.style.top = `${toRect.top - boardRect.top}px`;
-                }
-            });
-
-            flyer.addEventListener('transitionend', () => {
-                flyer.remove();
-                performCaptures(toR, toC);
-                checkWinConditions();
-                currentPlayer = currentPlayer === DEF ? ATT : DEF;
-                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
-                render();
-            }, { once: true });
-        }
-
-        function handleClick(e) {
-            if (gameOver || !gameStarted) return;
-
-            if (room) {
-                const mySide = isBlueSide ? DEF : ATT;
-                if (currentPlayer !== mySide) {
-                    statusEl.textContent = currentPlayer === DEF
-                        ? "Ожидайте хода защитников…"
-                        : "Ожидайте хода нападающих…";
-                    return;
-                }
-            }
-
-            const row = parseInt(e.currentTarget.dataset.row);
-            const col = parseInt(e.currentTarget.dataset.col);
-            const piece = board[row][col];
-
-            if ((piece === currentPlayer) || (piece === KING && currentPlayer === DEF)) {
-                selected = [row, col];
-                render();
-                return;
-            }
-
-            if (selected) {
-                const [fromRow, fromCol] = selected;
-                if (isValidMove(fromRow, fromCol, row, col)) {
-                    makeMove(fromRow, fromCol, row, col);
-                    selected = null;
-                } else {
-                    selected = null;
-                    render();
-                }
-            }
-        }
-
-        function isValidMove(fromR, fromC, toR, toC) {
-            if (fromR === toR && fromC === toC) return false;
-            if (!isStraightLine(fromR, fromC, toR, toC)) return false;
-            if (!isPathEmpty(fromR, fromC, toR, toC)) return false;
-            const target = board[toR][toC];
-            if (target !== 0 && typeof target !== "string") return false;
-            if ((target === "throne" || target === "escape") && board[fromR][fromC] !== KING) return false;
-            return true;
-        }
-
-        function isStraightLine(r1, c1, r2, c2) { return r1 === r2 || c1 === c2; }
-
-        function isPathEmpty(r1, c1, r2, c2) {
-            const dr = Math.sign(r2 - r1), dc = Math.sign(c2 - c1);
-            let r = r1 + dr, c = c1 + dc;
-            while (r !== r2 || c !== c2) {
-                if (board[r][c] !== 0 && typeof board[r][c] !== "string") return false;
-                r += dr; c += dc;
-            }
-            return true;
-        }
-
-        function highlightMoves() {
-            if (!selected) return;
-            const [r, c] = selected;
-            const moves = getPossibleMoves(r, c);
-            document.querySelectorAll('.possible').forEach(el => el.classList.remove('possible'));
-            moves.forEach(([tr, tc]) => {
-                const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
-                if (cell) cell.classList.add("possible");
-            });
-        }
-
-        function getPossibleMoves(row, col) {
-            const moves = [];
-            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-            for (let [dr, dc] of dirs) {
-                let r = row + dr, c = col + dc;
-                while (r >= 0 && r < SIZE && c >= 0 && c < SIZE) {
-                    if (!isValidMove(row, col, r, c)) break;
-                    moves.push([r, c]);
-                    r += dr; c += dc;
-                }
-            }
-            return moves;
-        }
-
-        function performCaptures(row, col) {
-            const mover = board[row][col];
-            const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
-            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-
-            for (let [dr, dc] of dirs) {
-                const midR = row + dr, midC = col + dc;
-                const endR = row + dr * 2, endC = col + dc * 2;
-                if (midR < 0 || midR >= SIZE || midC < 0 || midC >= SIZE) continue;
-                if (endR < 0 || endR >= SIZE || endC < 0 || endC >= SIZE) continue;
-
-                const midPiece = board[midR][midC];
-                const endPiece = board[endR][endC];
-
-                if ((midPiece === opponent || midPiece === KING) &&
-                    (endPiece === mover || endPiece === KING || endPiece === "throne" || endPiece === "escape")) {
-                    if (midPiece !== KING) board[midR][midC] = 0;
-                }
-            }
-        }
-
-        function checkWinConditions() {
-            for (let [r, c] of [[0, 0], [0, 10], [10, 0], [10, 10]]) {
-                if (board[r][c] === KING) {
-                    gameOver = true;
-                    statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
-                    return;
-                }
-            }
-            let kingR = -1, kingC = -1;
-            for (let r = 0; r < SIZE; r++) {
-                for (let c = 0; c < SIZE; c++) {
-                    if (board[r][c] === KING) { kingR = r; kingC = c; }
-                }
-            }
-            if (kingR === -1) {
-                gameOver = true;
-                statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
-                return;
-            }
-            if (kingR === 5 && kingC === 5) {
-                let cnt = 0;
-                [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
-                    const rr = 5 + dr, cc = 5 + dc;
-                    if (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && board[rr][cc] === ATT) cnt++;
-                });
-                if (cnt >= 4) {
-                    gameOver = true;
-                    statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен на троне`;
-                }
-            }
-        }
-
-        function updateStatus() {
-            if (gameOver || !gameStarted) return;
-            let text = currentPlayer === DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
-            if (room) text += ` — ${isBlueSide ? 'ТВОЙ' : 'противника'}`;
-            statusEl.textContent = text;
-        }
-
-        // Обработчики кнопок
+        // ===== ОБРАБОТЧИКИ КНОПОК =====
         document.getElementById("singleBtn").onclick = startNewGameSingle;
         document.getElementById("createBtn").onclick = () => {
             const id = prompt("Название комнаты")?.trim();
             if (!id) return;
-
             const choice = prompt("Выберите свою сторону:\n1 — Защитники (синие, начинают)\n2 — Нападающие (красные)")?.trim();
             if (!choice || (choice !== "1" && choice !== "2")) {
                 if (choice) alert("Неверный выбор стороны! Создание комнаты отменено.");
                 return;
             }
-
-            const hostIsDefender = choice === "1";
-            createOrJoinRoom(id, true, hostIsDefender);
+            createOrJoinRoom(id, true, choice === "1");
         };
         document.getElementById("joinBtn").onclick = () => {
             const id = prompt("ID комнаты")?.trim();
             if (id) createOrJoinRoom(id, false);
         };
 
-        // Автоматическое подключение по ссылке с параметром ?r=...
+        // Автоподключение по ссылке
         const urlParams = new URLSearchParams(window.location.search);
         const roomFromUrl = urlParams.get('r');
         if (roomFromUrl) createOrJoinRoom(decodeURIComponent(roomFromUrl), false);
 
-        // Инициализация пустой доски и рендер
+        // Стартовая инициализация
         initEmptyBoard();
         render();
     </script>
