@@ -4,28 +4,159 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл</title>
+    <title>Хнефатафл — онлайн с Trystero</title>
     <style>
-        /* весь твой стиль без изменений */
-        body { font-family: Arial, Helvetica, sans-serif; background: #1a1a1a; color: #eee; text-align: center; margin: 20px; }
-        h1 { margin: 0.4em; color: #ffcc00; }
-        #status { font-size: 1.4em; margin: 15px; min-height: 1.8em; font-weight: bold; color: #88ff88; }
-        #board { display: grid; grid-template-columns: repeat(11, 52px); grid-template-rows: repeat(11, 52px); gap: 3px; margin: 20px auto; width: fit-content; background: #333; padding: 12px; border-radius: 15px; box-shadow: 0 0 40px rgba(0,0,0,0.8); position: relative; overflow: visible; }
-        .cell { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 30px; cursor: pointer; border-radius: 8px; transition: all 0.15s; position: relative; }
-        .light { background: #e8d5b8; } .dark { background: #b38b67; }
-        .throne { background: #555 !important; } .escape { background: #444 !important; box-shadow: inset 0 0 15px #ffaa00; }
-        .selected { box-shadow: 0 0 0 5px #ff8800 inset !important; }
-        .possible { box-shadow: 0 0 0 5px #22ff44 inset !important; background: rgba(80,255,100,0.35) !important; }
-        .piece { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 26px; user-select: none; box-shadow: 0 4px 8px rgba(0,0,0,0.6); opacity: 1 !important; }
-        .defender { background: #1e4a8c; color: white; border: 3px solid #88bbff; }
-        .attacker { background: #9c1f1f; color: white; border: 3px solid #ff7777; }
-        .king { background: linear-gradient(#f0d070, #c09030); color: #222; font-size: 34px; border: 4px solid #ffeb3b; }
-        .piece.flying { position: absolute; z-index: 200; pointer-events: none; transition: all 0.62s cubic-bezier(0.25,0.1,0.25,1); box-shadow: 0 10px 20px rgba(0,0,0,0.5); opacity: 1 !important; }
-        button { padding: 12px 28px; font-size: 1.2em; margin: 10px; background: #ff8800; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        button:hover { background: #ffaa33; }
-        #multiplayerPanel { margin: 20px auto; max-width: 600px; }
-        #roomInfo { margin-top: 12px; font-size: 1.15em; line-height: 1.5; word-break: break-all; }
-        input[type="text"] { padding: 8px; font-size: 1em; width: 80%; max-width: 400px; margin: 8px 0; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #1a1a1a;
+            color: #eee;
+            text-align: center;
+            margin: 20px;
+        }
+
+        h1 {
+            margin: 0.4em;
+            color: #ffcc00;
+        }
+
+        #status {
+            font-size: 1.4em;
+            margin: 15px;
+            min-height: 1.8em;
+            font-weight: bold;
+            color: #88ff88;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(11, 52px);
+            grid-template-rows: repeat(11, 52px);
+            gap: 3px;
+            margin: 20px auto;
+            width: fit-content;
+            background: #333;
+            padding: 12px;
+            border-radius: 15px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+            position: relative;
+            overflow: visible;
+        }
+
+        .cell {
+            width: 52px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.15s;
+            position: relative;
+        }
+
+        .light {
+            background: #e8d5b8;
+        }
+
+        .dark {
+            background: #b38b67;
+        }
+
+        .throne {
+            background: #555 !important;
+        }
+
+        .escape {
+            background: #444 !important;
+            box-shadow: inset 0 0 15px #ffaa00;
+        }
+
+        .selected {
+            box-shadow: 0 0 0 5px #ff8800 inset !important;
+        }
+
+        .possible {
+            box-shadow: 0 0 0 5px #22ff44 inset !important;
+            background: rgba(80, 255, 100, 0.35) !important;
+        }
+
+        .piece {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 26px;
+            user-select: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
+            opacity: 1 !important;
+        }
+
+        .defender {
+            background: #1e4a8c;
+            color: white;
+            border: 3px solid #88bbff;
+        }
+
+        .attacker {
+            background: #9c1f1f;
+            color: white;
+            border: 3px solid #ff7777;
+        }
+
+        .king {
+            background: linear-gradient(#f0d070, #c09030);
+            color: #222;
+            font-size: 34px;
+            border: 4px solid #ffeb3b;
+        }
+
+        .piece.flying {
+            position: absolute;
+            z-index: 200;
+            pointer-events: none;
+            transition: all 0.62s cubic-bezier(0.25, 0.1, 0.25, 1);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            opacity: 1 !important;
+        }
+
+        button {
+            padding: 12px 28px;
+            font-size: 1.2em;
+            margin: 10px;
+            background: #ff8800;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #ffaa33;
+        }
+
+        #multiplayerPanel {
+            margin: 20px auto;
+            max-width: 600px;
+        }
+
+        #roomInfo {
+            margin-top: 12px;
+            font-size: 1.15em;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        input[type="text"] {
+            padding: 8px;
+            font-size: 1em;
+            width: 80%;
+            max-width: 400px;
+            margin: 8px 0;
+        }
     </style>
 </head>
 
@@ -43,7 +174,8 @@
     </div>
 
     <script type="module">
-        import { joinRoom } from 'https://esm.run/trystero'
+        // Используем стабильную версию Trystero с CDN
+        import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.12.0/trystero.min.js';
 
         const SIZE = 11;
         let board = [];
@@ -63,22 +195,27 @@
         let room = null;
         let sendMove = null;
         let getMove = null;
+
+        // Действия для инициализации (запрос-ответ)
         let sendRequestInit = null;
         let getRequestInit = null;
         let sendState = null;
         let getState = null;
-        let isBlueSide = true;
 
-        function initEmptyBoard() { /* без изменений */ 
+        let isBlueSide = true; // теперь означает «я играю за защитников»
+
+        function initEmptyBoard() {
             board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
             board[5][5] = "throne";
             [[0, 0], [0, 10], [10, 0], [10, 10]].forEach(([r, c]) => board[r][c] = "escape");
         }
 
-        function initFullBoard() { /* без изменений */ 
-            [[5, 3], [5, 4], [5, 6], [5, 7], [3, 5], [4, 5], [6, 5], [7, 5],
+        function initFullBoard() {
+            [[5, 3], [5, 4], [5, 6], [5, 7],
+            [3, 5], [4, 5], [6, 5], [7, 5],
             [4, 4], [4, 6], [6, 4], [6, 6]].forEach(([r, c]) => board[r][c] = DEF);
             board[5][5] = KING;
+
             for (let i = 3; i <= 7; i++) {
                 board[0][i] = board[10][i] = ATT;
                 board[i][0] = board[i][10] = ATT;
@@ -87,57 +224,124 @@
             board[5][1] = board[5][9] = ATT;
         }
 
-        /* все остальные функции (getCellClass, render, startNewGameSingle, makeMove, handleClick и т.д.) — полностью без изменений, как в предыдущей версии */
+        function getCellClass(r, c) {
+            if (board[r][c] === "throne") return "cell throne";
+            if (board[r][c] === "escape") return "cell escape";
+            return (r + c) % 2 === 0 ? "cell light" : "cell dark";
+        }
+
+        function getPieceHTML(val) {
+            if (val === DEF) return '<div class="piece defender">⛻</div>';
+            if (val === ATT) return '<div class="piece attacker">𖣳</div>';
+            if (val === KING) return '<div class="piece king">♔</div>';
+            return '';
+        }
+
+        function render() {
+            boardEl.innerHTML = '';
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    const cell = document.createElement("div");
+                    cell.className = getCellClass(r, c);
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.innerHTML = getPieceHTML(board[r][c]);
+                    cell.addEventListener("click", handleClick);
+                    boardEl.appendChild(cell);
+                }
+            }
+            if (selected) highlightMoves();
+            updateStatus();
+        }
+
+        function startNewGameSingle() {
+            if (room) { room.leave(); room = null; sendMove = getMove = null; }
+            selected = null;
+            currentPlayer = DEF;
+            gameOver = false;
+            gameStarted = true;
+            isBlueSide = true;
+            roomInfoEl.innerHTML = "";
+            initEmptyBoard();
+            initFullBoard();
+            render();
+            statusEl.textContent = "Одиночная игра — ход защитников (синие)";
+        }
 
         async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
             if (room) room.leave();
 
-            // ==================== ИСПРАВЛЕНИЕ РЕЛЕЕВ + TURN ====================
+            // ==================== УЛУЧШЕННАЯ КОНФИГУРАЦИЯ С ПУБЛИЧНЫМИ STUN/TURN ====================
             const config = {
-                appId: 'hnefatafl-f8-2025',
-
-                // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-                // Только надёжные релеи (black.nostrcity.club исключён)
-                relayUrls: [
-                    'wss://nos.lol',
-                    'wss://relay.damus.io',
-                    'wss://nostr.wine',
-                    'wss://relay.primal.net',
-                    'wss://nostr.zebedee.cloud'
-                ],
-                // =============================================================
-
+                appId: 'hnefatafl-f8-2025',  // можно заменить на свой Firebase, если есть
                 rtcConfig: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:openrelay.metered.ca:80' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
                         {
-                            urls: [
-                                'turn:openrelay.metered.ca:80?transport=udp',
-                                'turn:openrelay.metered.ca:80?transport=tcp',
-                                'turn:openrelay.metered.ca:443?transport=tcp'
-                            ],
+                            urls: 'turn:openrelay.metered.ca:80?transport=udp',
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
                             username: 'openrelayproject',
                             credential: 'openrelayproject'
                         }
                     ]
                 }
             };
+            // ============================================================================
 
-            room = joinRoom(config, roomId);
+            try {
+                room = joinRoom(config, roomId);
+            } catch (e) {
+                console.error('Ошибка создания комнаты:', e);
+                statusEl.textContent = 'Ошибка подключения: ' + e.message;
+                return;
+            }
 
-            // === Действия для ходов и инициализации (без изменений) ===
+            // === Действия для ходов ===
             [sendMove, getMove] = room.makeAction('move');
+
+            // === Действия для инициализации (запрос-ответ) ===
             [sendRequestInit, getRequestInit] = room.makeAction('requestInit');
             [sendState, getState] = room.makeAction('state');
 
-            getMove((data) => { /* без изменений */ });
-
-            room.onPeerJoin((peerId) => {
-                if (!asCreator) sendRequestInit({}, peerId);
+            // === Обработка ходов ===
+            getMove((data) => {
+                if (gameOver) return;
+                const { fromR, fromC, toR, toC } = data;
+                if (isValidMove(fromR, fromC, toR, toC)) {
+                    makeMove(fromR, fromC, toR, toC, false);
+                }
             });
 
+            // === Joiner запрашивает состояние у хоста ===
+            room.onPeerJoin((peerId) => {
+                console.log('Peer joined:', peerId);
+                if (!asCreator) {
+                    // Если мы не хост, то запрашиваем инициализацию у хоста
+                    sendRequestInit({}, peerId);
+                } else {
+                    // Если мы хост и игра уже идёт, отправляем состояние новому пиру (на случай переподключения)
+                    if (gameStarted && !gameOver) {
+                        sendState({
+                            board: JSON.parse(JSON.stringify(board)),
+                            currentPlayer,
+                            gameOver,
+                            hostIsDefender: isBlueSide
+                        }, peerId);
+                    }
+                }
+            });
+
+            // === Хост отвечает на запрос ===
             getRequestInit((data, senderPeerId) => {
+                console.log('Received init request from', senderPeerId);
                 if (asCreator) {
                     sendState({
                         board: JSON.parse(JSON.stringify(board)),
@@ -148,19 +352,49 @@
                 }
             });
 
-            getState((data) => { /* без изменений */ });
+            // === Joiner получает состояние и запускает игру ===
+            getState((data) => {
+                console.log('Received state from host', data);
+                board = data.board;
+                currentPlayer = data.currentPlayer;
+                gameOver = !!data.gameOver;
+                gameStarted = true;
+                isBlueSide = !data.hostIsDefender;
+                selected = null; // обязательно сбрасываем выделение
+                render();
+                statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
 
-            room.onPeerLeave(() => { /* без изменений */ });
+                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
+            });
 
-            /* остальной код createOrJoinRoom без изменений (selected, isBlueSide, initFullBoard, render и т.д.) */
+            room.onPeerLeave((peerId) => {
+                console.log('Peer left:', peerId);
+                if (!gameOver) statusEl.textContent = "Противник отключился…";
+            });
+
+            // Обработка ошибок (если поддерживается)
+            if (room.on) {
+                room.on('error', (err) => {
+                    console.error('Trystero error:', err);
+                    statusEl.textContent = 'Ошибка соединения: ' + err.message;
+                });
+            }
+
             selected = null;
             currentPlayer = DEF;
             gameOver = false;
             gameStarted = true;
 
-            if (asCreator) isBlueSide = hostIsDefender; else isBlueSide = false;
+            if (asCreator) {
+                isBlueSide = hostIsDefender;
+            } else {
+                isBlueSide = false;
+            }
 
-            if (asCreator) { initEmptyBoard(); initFullBoard(); }
+            if (asCreator) {
+                initEmptyBoard();
+                initFullBoard();
+            }
             render();
 
             if (asCreator) {
@@ -171,13 +405,228 @@
             }
         }
 
-        /* все остальные функции и обработчики кнопок — точно как в предыдущей версии (я их не дублирую здесь, чтобы не раздувать, но они остаются 1-в-1) */
+        function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
+            const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
+            const pieceEl = fromCell?.querySelector('.piece');
 
+            if (!pieceEl) {
+                // Если фишки нет (теоретически не должно случаться), просто перемещаем без анимации
+                board[toR][toC] = board[fromR][fromC];
+                board[fromR][fromC] = 0;
+                performCaptures(toR, toC);
+                checkWinConditions();
+                currentPlayer = currentPlayer === DEF ? ATT : DEF;
+                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
+                render();
+                return;
+            }
+
+            const flyer = pieceEl.cloneNode(true);
+            flyer.classList.add('flying');
+
+            const boardRect = boardEl.getBoundingClientRect();
+            const fromRect = pieceEl.getBoundingClientRect();
+
+            flyer.style.left = `${fromRect.left - boardRect.left}px`;
+            flyer.style.top = `${fromRect.top - boardRect.top}px`;
+            flyer.style.width = `${fromRect.width}px`;
+            flyer.style.height = `${fromRect.height}px`;
+
+            boardEl.appendChild(flyer);
+
+            board[toR][toC] = board[fromR][fromC];
+            board[fromR][fromC] = 0;
+
+            requestAnimationFrame(() => {
+                const toCell = document.querySelector(`[data-row="${toR}"][data-col="${toC}"]`);
+                if (toCell) {
+                    const toRect = toCell.getBoundingClientRect();
+                    flyer.style.left = `${toRect.left - boardRect.left}px`;
+                    flyer.style.top = `${toRect.top - boardRect.top}px`;
+                }
+            });
+
+            flyer.addEventListener('transitionend', () => {
+                flyer.remove();
+                performCaptures(toR, toC);
+                checkWinConditions();
+                currentPlayer = currentPlayer === DEF ? ATT : DEF;
+                if (shouldSend && sendMove && room) sendMove({ fromR, fromC, toR, toC });
+                render();
+            }, { once: true });
+        }
+
+        function handleClick(e) {
+            if (gameOver || !gameStarted) return;
+
+            if (room) {
+                const mySide = isBlueSide ? DEF : ATT;
+                if (currentPlayer !== mySide) {
+                    statusEl.textContent = currentPlayer === DEF
+                        ? "Ожидайте хода защитников…"
+                        : "Ожидайте хода нападающих…";
+                    return;
+                }
+            }
+
+            const row = parseInt(e.currentTarget.dataset.row);
+            const col = parseInt(e.currentTarget.dataset.col);
+            const piece = board[row][col];
+
+            if ((piece === currentPlayer) || (piece === KING && currentPlayer === DEF)) {
+                selected = [row, col];
+                render();
+                return;
+            }
+
+            if (selected) {
+                const [fromRow, fromCol] = selected;
+                if (isValidMove(fromRow, fromCol, row, col)) {
+                    makeMove(fromRow, fromCol, row, col);
+                    selected = null;
+                } else {
+                    selected = null;
+                    render();
+                }
+            }
+        }
+
+        function isValidMove(fromR, fromC, toR, toC) {
+            if (fromR === toR && fromC === toC) return false;
+            if (!isStraightLine(fromR, fromC, toR, toC)) return false;
+            if (!isPathEmpty(fromR, fromC, toR, toC)) return false;
+            const target = board[toR][toC];
+            if (target !== 0 && typeof target !== "string") return false;
+            if ((target === "throne" || target === "escape") && board[fromR][fromC] !== KING) return false;
+            return true;
+        }
+
+        function isStraightLine(r1, c1, r2, c2) { return r1 === r2 || c1 === c2; }
+
+        function isPathEmpty(r1, c1, r2, c2) {
+            const dr = Math.sign(r2 - r1), dc = Math.sign(c2 - c1);
+            let r = r1 + dr, c = c1 + dc;
+            while (r !== r2 || c !== c2) {
+                if (board[r][c] !== 0 && typeof board[r][c] !== "string") return false;
+                r += dr; c += dc;
+            }
+            return true;
+        }
+
+        function highlightMoves() {
+            if (!selected) return;
+            const [r, c] = selected;
+            const moves = getPossibleMoves(r, c);
+            document.querySelectorAll('.possible').forEach(el => el.classList.remove('possible'));
+            moves.forEach(([tr, tc]) => {
+                const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
+                if (cell) cell.classList.add("possible");
+            });
+        }
+
+        function getPossibleMoves(row, col) {
+            const moves = [];
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            for (let [dr, dc] of dirs) {
+                let r = row + dr, c = col + dc;
+                while (r >= 0 && r < SIZE && c >= 0 && c < SIZE) {
+                    if (!isValidMove(row, col, r, c)) break;
+                    moves.push([r, c]);
+                    r += dr; c += dc;
+                }
+            }
+            return moves;
+        }
+
+        function performCaptures(row, col) {
+            const mover = board[row][col];
+            const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+            for (let [dr, dc] of dirs) {
+                const midR = row + dr, midC = col + dc;
+                const endR = row + dr * 2, endC = col + dc * 2;
+                if (midR < 0 || midR >= SIZE || midC < 0 || midC >= SIZE) continue;
+                if (endR < 0 || endR >= SIZE || endC < 0 || endC >= SIZE) continue;
+
+                const midPiece = board[midR][midC];
+                const endPiece = board[endR][endC];
+
+                if ((midPiece === opponent || midPiece === KING) &&
+                    (endPiece === mover || endPiece === KING || endPiece === "throne" || endPiece === "escape")) {
+                    if (midPiece !== KING) board[midR][midC] = 0;
+                }
+            }
+        }
+
+        function checkWinConditions() {
+            for (let [r, c] of [[0, 0], [0, 10], [10, 0], [10, 10]]) {
+                if (board[r][c] === KING) {
+                    gameOver = true;
+                    statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
+                    return;
+                }
+            }
+            let kingR = -1, kingC = -1;
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    if (board[r][c] === KING) { kingR = r; kingC = c; }
+                }
+            }
+            if (kingR === -1) {
+                gameOver = true;
+                statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
+                return;
+            }
+            if (kingR === 5 && kingC === 5) {
+                let cnt = 0;
+                [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+                    const rr = 5 + dr, cc = 5 + dc;
+                    if (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && board[rr][cc] === ATT) cnt++;
+                });
+                if (cnt >= 4) {
+                    gameOver = true;
+                    statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен на троне`;
+                }
+            }
+        }
+
+        function updateStatus() {
+            if (gameOver || !gameStarted) return;
+            let text = currentPlayer === DEF ? "Ход защитников (синие)" : "Ход нападающих (красные)";
+            if (room) text += ` — ${isBlueSide ? 'ТВОЙ' : 'противника'}`;
+            statusEl.textContent = text;
+        }
+
+        // Обработчики кнопок
         document.getElementById("singleBtn").onclick = startNewGameSingle;
-        /* createBtn, joinBtn, urlParams — без изменений */
+        document.getElementById("createBtn").onclick = () => {
+            const id = prompt("Название комнаты")?.trim();
+            if (!id) return;
 
+            const choice = prompt("Выберите свою сторону:\n1 — Защитники (синие, начинают)\n2 — Нападающие (красные)")?.trim();
+            if (!choice || (choice !== "1" && choice !== "2")) {
+                if (choice) alert("Неверный выбор стороны! Создание комнаты отменено.");
+                return;
+            }
+
+            const hostIsDefender = choice === "1";
+            createOrJoinRoom(id, true, hostIsDefender);
+        };
+        document.getElementById("joinBtn").onclick = () => {
+            const id = prompt("ID комнаты")?.trim();
+            if (id) createOrJoinRoom(id, false);
+        };
+
+        // Автоматическое подключение по ссылке с параметром ?r=...
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomFromUrl = urlParams.get('r');
+        if (roomFromUrl) createOrJoinRoom(decodeURIComponent(roomFromUrl), false);
+
+        // Инициализация пустой доски и рендер
         initEmptyBoard();
         render();
     </script>
 </body>
+
 </html>
