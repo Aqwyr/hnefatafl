@@ -262,72 +262,92 @@
             statusEl.textContent = "Одиночная игра — ход защитников (синие)";
         }
 
-        async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
-            if (room) room.leave();
-            room = joinRoom({ appId: 'hnefatafl-f8-2025' }, roomId);
+		async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
+			if (room) room.leave();
 
-            [sendMove, getMove] = room.makeAction('move');
-            [sendInit, getInit] = room.makeAction('init');
+			const config = {
+				appId: 'hnefatafl-f8-2025',
 
-            getMove((data) => {
-                if (gameOver) return;
-                const { fromR, fromC, toR, toC } = data;
-                if (isValidMove(fromR, fromC, toR, toC)) {
-                    makeMove(fromR, fromC, toR, toC, false);
-                }
-            });
+				rtcConfig: { 
+					iceServers: [
+						{ urls: 'stun:stun.l.google.com:19302' }, 
+						{ urls: 'stun:openrelay.metered.ca:80' },
 
-            getInit((data) => {
-                board = data.board;
-                currentPlayer = data.currentPlayer;
-                gameOver = !!data.gameOver;
-                gameStarted = true;
-                isBlueSide = !data.hostIsDefender; // противоположная сторона хоста
-                selected = null;
-                render();
-                statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
+						{
+							urls: [
+								'turn:openrelay.metered.ca:80?transport=udp',
+								'turn:openrelay.metered.ca:80?transport=tcp',
+								'turn:openrelay.metered.ca:443?transport=tcp'
+							],
+							username: 'openrelayproject',
+							credential: 'openrelayproject'
+						}
+					]
+				}
+			};
 
-                // обновляем информацию о комнате для присоединившегося
-                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
-            });
+			room = joinRoom(config, roomId);
 
-            room.onPeerJoin(() => {
-                if (asCreator && board[5][5] === KING) {
-                    sendInit({
-                        board: JSON.parse(JSON.stringify(board)),
-                        currentPlayer,
-                        gameOver,
-                        hostIsDefender: isBlueSide // передаём, за кого играет хост
-                    });
-                }
-            });
+			[sendMove, getMove] = room.makeAction('move');
+			[sendInit, getInit] = room.makeAction('init');
 
-            room.onPeerLeave(() => {
-                if (!gameOver) statusEl.textContent = "Противник отключился…";
-            });
+			getMove((data) => {
+				if (gameOver) return;
+				const { fromR, fromC, toR, toC } = data;
+				if (isValidMove(fromR, fromC, toR, toC)) {
+					makeMove(fromR, fromC, toR, toC, false);
+				}
+			});
 
-            selected = null;
-            currentPlayer = DEF;
-            gameOver = false;
-            gameStarted = true;
+			getInit((data) => {
+				board = data.board;
+				currentPlayer = data.currentPlayer;
+				gameOver = !!data.gameOver;
+				gameStarted = true;
+				isBlueSide = !data.hostIsDefender;
+				selected = null;
+				render();
+				statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
 
-            // === ИСПРАВЛЕНИЕ: теперь хост выбирает сторону ===
-            if (asCreator) {
-                isBlueSide = hostIsDefender;
-            } else {
-                isBlueSide = false; // временно (будет перезаписано в getInit)
-            }
+				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
+			});
 
-            if (asCreator) { initEmptyBoard(); initFullBoard(); }
-            render();
+			room.onPeerJoin(() => {
+				if (asCreator && board[5][5] === KING) {
+					sendInit({
+						board: JSON.parse(JSON.stringify(board)),
+						currentPlayer,
+						gameOver,
+						hostIsDefender: isBlueSide
+					});
+				}
+			});
 
-            if (asCreator) {
-                const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
-                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
-            } else {
-                roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ожидание инициализации от хоста...`;
-            }
-        }
+			room.onPeerLeave(() => {
+				if (!gameOver) statusEl.textContent = "Противник отключился…";
+			});
+
+			selected = null;
+			currentPlayer = DEF;
+			gameOver = false;
+			gameStarted = true;
+
+			if (asCreator) {
+				isBlueSide = hostIsDefender;
+			} else {
+				isBlueSide = false;
+			}
+
+			if (asCreator) { initEmptyBoard(); initFullBoard(); }
+			render();
+
+			if (asCreator) {
+				const link = `${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}`;
+				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${link}" readonly onclick="this.select()">`;
+			} else {
+				roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ожидание инициализации от хоста...`;
+			}
+		}
 
         function makeMove(fromR, fromC, toR, toC, shouldSend = true) {
             const fromCell = document.querySelector(`[data-row="${fromR}"][data-col="${fromC}"]`);
