@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл — онлайн с Trystero</title>
+    <title>Хнефатафл — онлайн (исправлено)</title>
     <style>
+        /* стили без изменений */
         body {
             font-family: Arial, Helvetica, sans-serif;
             background: #1a1a1a;
@@ -174,8 +175,14 @@
     </div>
 
     <script type="module">
-        // Используем стабильную версию Trystero с CDN
-        import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.12.0/trystero.min.js';
+        // ========== ИСПРАВЛЕННЫЙ ИМПОРТ ==========
+        import { joinRoom } from 'https://esm.sh/trystero@0.12.0';
+
+        // Проверка загрузки библиотеки
+        if (typeof joinRoom !== 'function') {
+            document.getElementById('status').innerHTML = 'Ошибка загрузки библиотеки Trystero. Попробуйте позже или используйте одиночную игру.';
+            throw new Error('Trystero not loaded');
+        }
 
         const SIZE = 11;
         let board = [];
@@ -271,9 +278,9 @@
         async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
             if (room) room.leave();
 
-            // ==================== УЛУЧШЕННАЯ КОНФИГУРАЦИЯ С ПУБЛИЧНЫМИ STUN/TURN ====================
+            // ========== УЛУЧШЕННАЯ КОНФИГУРАЦИЯ ==========
             const config = {
-                appId: 'hnefatafl-f8-2025',  // можно заменить на свой Firebase, если есть
+                appId: 'hnefatafl-f8-2025',  // можно заменить на свой Firebase
                 rtcConfig: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
@@ -294,7 +301,6 @@
                     ]
                 }
             };
-            // ============================================================================
 
             try {
                 room = joinRoom(config, roomId);
@@ -324,7 +330,7 @@
             room.onPeerJoin((peerId) => {
                 console.log('Peer joined:', peerId);
                 if (!asCreator) {
-                    // Если мы не хост, то запрашиваем инициализацию у хоста
+                    // Если мы не хост, запрашиваем инициализацию у хоста
                     sendRequestInit({}, peerId);
                 } else {
                     // Если мы хост и игра уже идёт, отправляем состояние новому пиру (на случай переподключения)
@@ -371,14 +377,6 @@
                 console.log('Peer left:', peerId);
                 if (!gameOver) statusEl.textContent = "Противник отключился…";
             });
-
-            // Обработка ошибок (если поддерживается)
-            if (room.on) {
-                room.on('error', (err) => {
-                    console.error('Trystero error:', err);
-                    statusEl.textContent = 'Ошибка соединения: ' + err.message;
-                });
-            }
 
             selected = null;
             currentPlayer = DEF;
