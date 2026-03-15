@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл — финальная версия</title>
+    <title>Хнефатафл — исправленная победа</title>
     <style>
-        /* Стили без изменений (для краткости оставлены, можно скопировать из предыдущих версий) */
+        /* Стили без изменений (можно оставить как в предыдущем ответе) */
         body {
             font-family: Arial, Helvetica, sans-serif;
             background: #1a1a1a;
@@ -217,9 +217,8 @@
 
         // ===== БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КЛАССА ЯЧЕЙКИ =====
         function getCellClass(r, c) {
-            // Защита от битой доски
             if (!board || !Array.isArray(board) || board.length !== SIZE || !board[r] || !Array.isArray(board[r])) {
-                return "cell light"; // fallback
+                return "cell light";
             }
             if (board[r][c] === "throne") return "cell throne";
             if (board[r][c] === "escape") return "cell escape";
@@ -235,7 +234,6 @@
 
         // ===== РЕНДЕР =====
         function render() {
-            // Проверяем целостность доски
             if (!board || !Array.isArray(board) || board.length !== SIZE) {
                 console.warn('Board повреждена, восстанавливаем...');
                 initEmptyBoard();
@@ -296,12 +294,14 @@
         function highlightMoves() {
             if (!selected) return;
             const [r,c] = selected;
+            document.querySelectorAll('.possible').forEach(el => el.classList.remove('possible'));
             getPossibleMoves(r,c).forEach(([tr,tc]) => {
                 const cell = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
                 if (cell) cell.classList.add("possible");
             });
         }
 
+        // ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ ЗАХВАТА (ТЕПЕРЬ УДАЛЯЕТ КОРОЛЯ) =====
         function performCaptures(row, col) {
             const mover = board[row][col];
             const opponent = (mover === DEF || mover === KING) ? ATT : DEF;
@@ -316,27 +316,38 @@
                 const midPiece = board[midR][midC];
                 const endPiece = board[endR][endC];
 
+                // Захват, если средняя фигура - противник (включая короля) и крайняя - mover или трон/угол
                 if ((midPiece === opponent || midPiece === KING) &&
                     (endPiece === mover || endPiece === KING || endPiece === "throne" || endPiece === "escape")) {
-                    if (midPiece !== KING) board[midR][midC] = 0;
+                    // Убираем любую фигуру, включая короля
+                    board[midR][midC] = 0;
                 }
             }
         }
 
         function checkWinConditions() {
+            // Проверка победы защитников (король на углах)
             for (let [r,c] of [[0,0],[0,10],[10,0],[10,10]]) {
                 if (board[r][c] === KING) {
                     gameOver = true;
                     statusEl.innerHTML = `<span style="color:#44ff88">ПОБЕДА ЗАЩИТНИКОВ!</span><br>Король сбежал`;
                     return;
-            }}
+                }
+            }
+            // Поиск короля
             let kingR=-1, kingC=-1;
-            for (let r=0; r<SIZE; r++) for (let c=0; c<SIZE; c++) if (board[r][c]===KING) { kingR=r; kingC=c; }
+            for (let r=0; r<SIZE; r++) {
+                for (let c=0; c<SIZE; c++) {
+                    if (board[r][c]===KING) { kingR=r; kingC=c; }
+                }
+            }
+            // Если короля нет на доске – победа нападающих
             if (kingR===-1) {
                 gameOver = true;
                 statusEl.innerHTML = `<span style="color:#ff4444">ПОБЕДА НАПАДАЮЩИХ!</span><br>Король захвачен`;
                 return;
             }
+            // Если король на троне и окружён с четырёх сторон – победа нападающих
             if (kingR===5 && kingC===5) {
                 let cnt = 0;
                 [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc]) => {
@@ -461,6 +472,8 @@
 
             const config = {
                 appId: 'hnefatafl-f8-2025',
+                // Отключаем WebTorrent трекеры, чтобы избежать ошибки wss://tracker.btorrent.xyz/
+                trackers: false,
                 rtcConfig: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
@@ -540,7 +553,6 @@
                 if (!gameOver) statusEl.textContent = "Противник отключился…";
             });
 
-            // Сброс состояния игры
             selected = null;
             currentPlayer = DEF;
             gameOver = false;
@@ -555,10 +567,10 @@
             if (asCreator) {
                 initEmptyBoard();
                 initFullBoard();
-                render(); // Хост сразу видит свою расстановку
+                render();
             } else {
-                // Для присоединяющегося не рендерим повторно — доска уже пустая от initEmptyBoard()
-                // Ждём getState
+                // Для присоединяющегося показываем пустую доску в ожидании состояния
+                // (initEmptyBoard уже вызван при загрузке)
             }
 
             if (asCreator) {
