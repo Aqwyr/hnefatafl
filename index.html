@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Хнефатафл — онлайн (исправлено)</title>
+    <title>Хнефатафл — окончательная версия</title>
     <style>
-        /* стили без изменений */
+        /* Стили без изменений (можно оставить те же) */
         body {
             font-family: Arial, Helvetica, sans-serif;
             background: #1a1a1a;
@@ -14,12 +14,10 @@
             text-align: center;
             margin: 20px;
         }
-
         h1 {
             margin: 0.4em;
             color: #ffcc00;
         }
-
         #status {
             font-size: 1.4em;
             margin: 15px;
@@ -27,7 +25,6 @@
             font-weight: bold;
             color: #88ff88;
         }
-
         #board {
             display: grid;
             grid-template-columns: repeat(11, 52px);
@@ -42,7 +39,6 @@
             position: relative;
             overflow: visible;
         }
-
         .cell {
             width: 52px;
             height: 52px;
@@ -55,33 +51,26 @@
             transition: all 0.15s;
             position: relative;
         }
-
         .light {
             background: #e8d5b8;
         }
-
         .dark {
             background: #b38b67;
         }
-
         .throne {
             background: #555 !important;
         }
-
         .escape {
             background: #444 !important;
             box-shadow: inset 0 0 15px #ffaa00;
         }
-
         .selected {
             box-shadow: 0 0 0 5px #ff8800 inset !important;
         }
-
         .possible {
             box-shadow: 0 0 0 5px #22ff44 inset !important;
             background: rgba(80, 255, 100, 0.35) !important;
         }
-
         .piece {
             width: 44px;
             height: 44px;
@@ -95,26 +84,22 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
             opacity: 1 !important;
         }
-
         .defender {
             background: #1e4a8c;
             color: white;
             border: 3px solid #88bbff;
         }
-
         .attacker {
             background: #9c1f1f;
             color: white;
             border: 3px solid #ff7777;
         }
-
         .king {
             background: linear-gradient(#f0d070, #c09030);
             color: #222;
             font-size: 34px;
             border: 4px solid #ffeb3b;
         }
-
         .piece.flying {
             position: absolute;
             z-index: 200;
@@ -123,7 +108,6 @@
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
             opacity: 1 !important;
         }
-
         button {
             padding: 12px 28px;
             font-size: 1.2em;
@@ -134,23 +118,19 @@
             border-radius: 8px;
             cursor: pointer;
         }
-
         button:hover {
             background: #ffaa33;
         }
-
         #multiplayerPanel {
             margin: 20px auto;
             max-width: 600px;
         }
-
         #roomInfo {
             margin-top: 12px;
             font-size: 1.15em;
             line-height: 1.5;
             word-break: break-all;
         }
-
         input[type="text"] {
             padding: 8px;
             font-size: 1em;
@@ -175,15 +155,46 @@
     </div>
 
     <script type="module">
-        // ========== ИСПРАВЛЕННЫЙ ИМПОРТ ==========
-        import { joinRoom } from 'https://esm.sh/trystero@0.12.0';
+        // ===== ПЫТАЕМСЯ ЗАГРУЗИТЬ TRYSTERO РАЗНЫМИ СПОСОБАМИ =====
+        let joinRoom;
 
-        // Проверка загрузки библиотеки
-        if (typeof joinRoom !== 'function') {
-            document.getElementById('status').innerHTML = 'Ошибка загрузки библиотеки Trystero. Попробуйте позже или используйте одиночную игру.';
-            throw new Error('Trystero not loaded');
+        try {
+            // Попробуем esm.sh (наиболее стабильный)
+            const module = await import('https://esm.sh/trystero@0.12.0');
+            joinRoom = module.joinRoom;
+            console.log('Trystero загружен с esm.sh');
+        } catch (e1) {
+            console.warn('esm.sh не сработал:', e1);
+            try {
+                // Попробуем unpkg
+                const module = await import('https://unpkg.com/trystero@0.12.0?module');
+                joinRoom = module.joinRoom;
+                console.log('Trystero загружен с unpkg');
+            } catch (e2) {
+                console.warn('unpkg не сработал:', e2);
+                try {
+                    // Попробуем skypack
+                    const module = await import('https://cdn.skypack.dev/trystero@0.12.0');
+                    joinRoom = module.joinRoom;
+                    console.log('Trystero загружен со skypack');
+                } catch (e3) {
+                    console.error('Все CDN недоступны:', e3);
+                    document.getElementById('status').innerHTML = 'Не удалось загрузить библиотеку для онлайн-игры. Работает только одиночный режим.';
+                }
+            }
         }
 
+        // Если библиотека не загружена, подменяем функцию создания комнаты на заглушку
+        if (typeof joinRoom !== 'function') {
+            joinRoom = () => {
+                throw new Error('Trystero не загружен');
+            };
+            // Отключаем кнопки мультиплеера или показываем предупреждение
+            document.getElementById('createBtn').disabled = true;
+            document.getElementById('joinBtn').disabled = true;
+        }
+
+        // ===== ДАЛЬШЕ ИДЁТ ОСНОВНОЙ КОД =====
         const SIZE = 11;
         let board = [];
         let selected = null;
@@ -209,7 +220,7 @@
         let sendState = null;
         let getState = null;
 
-        let isBlueSide = true; // теперь означает «я играю за защитников»
+        let isBlueSide = true; // означает «я играю за защитников»
 
         function initEmptyBoard() {
             board = Array(SIZE).fill().map(() => Array(SIZE).fill(0));
@@ -276,11 +287,14 @@
         }
 
         async function createOrJoinRoom(roomId, asCreator = true, hostIsDefender = true) {
+            if (!joinRoom) {
+                statusEl.textContent = 'Библиотека не загружена, онлайн-режим недоступен';
+                return;
+            }
             if (room) room.leave();
 
-            // ========== УЛУЧШЕННАЯ КОНФИГУРАЦИЯ ==========
             const config = {
-                appId: 'hnefatafl-f8-2025',  // можно заменить на свой Firebase
+                appId: 'hnefatafl-f8-2025',
                 rtcConfig: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
@@ -310,14 +324,10 @@
                 return;
             }
 
-            // === Действия для ходов ===
             [sendMove, getMove] = room.makeAction('move');
-
-            // === Действия для инициализации (запрос-ответ) ===
             [sendRequestInit, getRequestInit] = room.makeAction('requestInit');
             [sendState, getState] = room.makeAction('state');
 
-            // === Обработка ходов ===
             getMove((data) => {
                 if (gameOver) return;
                 const { fromR, fromC, toR, toC } = data;
@@ -326,14 +336,11 @@
                 }
             });
 
-            // === Joiner запрашивает состояние у хоста ===
             room.onPeerJoin((peerId) => {
                 console.log('Peer joined:', peerId);
                 if (!asCreator) {
-                    // Если мы не хост, запрашиваем инициализацию у хоста
                     sendRequestInit({}, peerId);
                 } else {
-                    // Если мы хост и игра уже идёт, отправляем состояние новому пиру (на случай переподключения)
                     if (gameStarted && !gameOver) {
                         sendState({
                             board: JSON.parse(JSON.stringify(board)),
@@ -345,7 +352,6 @@
                 }
             });
 
-            // === Хост отвечает на запрос ===
             getRequestInit((data, senderPeerId) => {
                 console.log('Received init request from', senderPeerId);
                 if (asCreator) {
@@ -358,7 +364,6 @@
                 }
             });
 
-            // === Joiner получает состояние и запускает игру ===
             getState((data) => {
                 console.log('Received state from host', data);
                 board = data.board;
@@ -366,10 +371,9 @@
                 gameOver = !!data.gameOver;
                 gameStarted = true;
                 isBlueSide = !data.hostIsDefender;
-                selected = null; // обязательно сбрасываем выделение
+                selected = null;
                 render();
                 statusEl.textContent = "Игра начата. Твой цвет — " + (isBlueSide ? "защитники (синие)" : "нападающие (красные)");
-
                 roomInfoEl.innerHTML = `Комната: <b>${roomId}</b><br>Ты — ${isBlueSide ? 'защитники (синие)' : 'нападающие (красные)'}<br>Ссылка для друга:<br><input type="text" value="${location.origin}${location.pathname}?r=${encodeURIComponent(roomId)}" readonly onclick="this.select()">`;
             });
 
@@ -408,7 +412,6 @@
             const pieceEl = fromCell?.querySelector('.piece');
 
             if (!pieceEl) {
-                // Если фишки нет (теоретически не должно случаться), просто перемещаем без анимации
                 board[toR][toC] = board[fromR][fromC];
                 board[fromR][fromC] = 0;
                 performCaptures(toR, toC);
